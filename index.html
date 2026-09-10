@@ -1,38 +1,144 @@
 <!doctype html>
 <html lang="no">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#f7f3ea">
-<title>Fôrrytter App</title>
-<style>
-:root{--bg:#f7f3ea;--card:#fff;--ink:#283126;--muted:#6b746a;--line:#ded9cf;--accent:#5f7652;--accent2:#e9efe5;--danger:#9f3f37}
-*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink);padding-bottom:72px}header{position:sticky;top:0;z-index:5;background:#fff;border-bottom:1px solid var(--line);padding:calc(env(safe-area-inset-top) + 8px) 12px 8px}h1{font-size:21px;margin:0}header p{font-size:12px;color:var(--muted);margin:3px 0 7px}.testbar{display:flex;align-items:center;gap:6px}.testbar span{font-size:11px;color:var(--muted);margin-right:auto}.testbar button{min-height:31px;font-size:11px;padding:5px 9px}main{max-width:680px;margin:auto;padding:8px}.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px;margin-bottom:8px}h2{font-size:16px;margin:0 0 8px}.row{display:flex;gap:7px;align-items:center;justify-content:space-between}.list{display:grid;gap:7px}.item{border:1px solid var(--line);border-radius:11px;padding:8px 9px;background:#fff}.muted,small{color:var(--muted)}button{border:0;border-radius:10px;padding:8px 10px;min-height:38px;background:var(--accent);color:#fff;font-weight:650;font-size:13px}button.secondary{background:#eef1ec;color:var(--ink)}button.activeRole{background:var(--ink);color:#fff}button.danger{background:#f7e5e3;color:var(--danger)}input,select,textarea{width:100%;padding:8px 9px;border:1px solid var(--line);border-radius:10px;background:#fff;font:inherit;font-size:16px;margin-top:4px}label{font-size:11px;color:var(--muted)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}.hidden{display:none!important}.pill{display:inline-block;padding:4px 7px;border-radius:999px;background:var(--accent2);font-size:11px}.notice{background:#fff2c7;border-radius:10px;padding:8px;margin-bottom:8px;font-size:12px}.status{display:inline-block;font-size:11px;padding:4px 7px;border-radius:999px;background:#eee;margin-top:5px}nav{position:fixed;left:0;right:0;bottom:0;z-index:8;display:grid;grid-template-columns:repeat(4,1fr);gap:4px;background:#fff;border-top:1px solid var(--line);padding:5px 7px calc(env(safe-area-inset-bottom) + 5px)}nav button{background:transparent;color:var(--muted);font-size:11px;min-height:37px;padding:6px 2px}nav button.active{background:var(--accent2);color:var(--accent)}@media(max-width:360px){.grid{grid-template-columns:1fr}}
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Fôrrytter" />
+  <meta name="theme-color" content="#f7f3ea" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <title>Fôrrytter App</title>
+  <style>
+    :root{--bg:#f7f3ea;--card:#fff;--ink:#283126;--muted:#6b746a;--line:#ded9cf;--accent:#5f7652;--accent2:#e9efe5;--warn:#fff2c7;--danger:#9f3f37}
+    *{box-sizing:border-box} html{-webkit-text-size-adjust:100%} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink);padding-bottom:78px;overflow-x:hidden}
+    header{padding:calc(env(safe-area-inset-top) + 10px) 14px 10px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+    header h1{font-size:21px;line-height:1.1;margin:0} header p{margin:3px 0 0;color:var(--muted);font-size:13px}
+    main{max-width:720px;margin:auto;padding:10px 10px 14px}.card{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:12px;margin-bottom:10px;box-shadow:0 2px 8px #00000008}
+    h2{font-size:17px;line-height:1.2;margin:0 0 9px} h3{font-size:15px;margin:10px 0 7px}.pill{display:inline-block;background:var(--accent2);padding:4px 7px;border-radius:999px;font-size:11px;margin-right:5px}
+    .row{display:flex;gap:8px;align-items:center;justify-content:space-between;min-width:0}.row>div{min-width:0}.list{display:grid;gap:7px}.item{border:1px solid var(--line);border-radius:12px;padding:9px 10px;background:#fff}.item small{color:var(--muted);font-size:12px}
+    button,.btn{border:0;border-radius:10px;padding:9px 11px;font-weight:650;background:var(--accent);color:white;font-size:14px;min-height:40px}button.secondary{background:#eef1ec;color:#344033}button.danger{background:#f7e5e3;color:var(--danger)}
+    input,select,textarea{width:100%;min-width:0;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:#fff;font:inherit;font-size:16px;margin-top:4px}label{font-size:12px;color:var(--muted)}.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}.hidden{display:none!important}
+    nav{position:fixed;left:0;right:0;bottom:0;padding:6px 8px calc(env(safe-area-inset-bottom) + 6px);background:#fff;border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(4,1fr);gap:4px;z-index:6}
+    nav button{background:transparent;color:var(--muted);padding:7px 2px;font-size:11px;min-height:38px}nav button.active{color:var(--accent);background:var(--accent2)}
+    .notice{background:var(--warn);border-radius:12px;padding:9px 10px;margin-bottom:9px;font-size:13px}.status{font-size:11px;padding:4px 7px;border-radius:999px;background:#eee}.pending{background:#fff0c2}.accepted{background:#dff1df}.declined{background:#f5dddd}
+    .task{display:flex;gap:8px;align-items:flex-start}.task input{width:20px;height:20px;margin:0}.muted{color:var(--muted)}
+    #userPick{max-width:42%;font-size:15px;padding-right:28px}
+    .testbar{display:flex;gap:6px;align-items:center;margin-top:8px}
+    .testbar span{font-size:11px;color:var(--muted);margin-right:auto}
+    .testbar button{min-height:32px;padding:6px 9px;font-size:11px}
+    .testbar button.activeRole{background:var(--ink);color:#fff}
+    @media (max-width:430px){
+      header{padding-left:12px;padding-right:12px}
+      header h1{font-size:20px}
+      main{padding:8px}
+      .card{padding:10px;border-radius:14px;margin-bottom:8px}
+      h2{font-size:16px;margin-bottom:8px}
+      .item{padding:8px 9px}
+      button,.btn{font-size:13px;padding:8px 10px}
+      .grid{gap:6px}
+      label{font-size:11px}
+      input,select,textarea{padding:8px 9px}
+      .notice{font-size:12px}
+    }
+    @media (max-width:360px){
+      .grid{grid-template-columns:1fr}
+      .row{align-items:flex-start}
+      #userPick{max-width:46%}
+    }
+  </style>
 </head>
 <body>
-<header><h1>Fôrrytter App</h1><p id="week"></p><div class="testbar"><span>Test som</span><button id="roleUser" class="secondary" onclick="setRole('user')">Bruker</button><button id="roleAdmin" class="secondary" onclick="setRole('admin')">Admin</button></div></header>
-<main><section id="today" class="tab"></section><section id="feeding" class="tab hidden"></section><section id="messages" class="tab hidden"></section><section id="admin" class="tab hidden"></section></main>
-<nav><button data-tab="today" class="active">I dag</button><button data-tab="feeding">Fôring</button><button data-tab="messages">Beskjeder</button><button data-tab="admin">Admin</button></nav>
+<header>
+  <h1>Fôrrytter App</h1><p id="weekLabel"></p>
+  <div class="testbar">
+    <span>Testvisning</span>
+    <button id="roleUser" class="secondary" onclick="setRole('user')">Bruker</button>
+    <button id="roleAdmin" class="secondary" onclick="setRole('admin')">Admin</button>
+  </div>
+</header>
+<main>
+  <section id="today" class="tab"></section>
+  <section id="feeding" class="tab hidden"></section>
+  <section id="messages" class="tab hidden"></section>
+  <section id="admin" class="tab hidden"></section>
+</main>
+<nav>
+  <button data-tab="today" class="active">I dag</button>
+  <button data-tab="feeding">Fôring</button>
+  <button data-tab="messages">Beskjeder</button>
+  <button data-tab="admin">Admin</button>
+</nav>
 <script>
-const key='forrytterTestV2';
-const today=()=>new Date().toISOString().slice(0,10);
-const seed={currentUser:'Anna',riders:['Anna','Marius','Emma','Sofie'],tasks:['Møkke boks','Fylle vann','Pusse hesten'],messages:[{id:'m1',text:'Husk å lukke porten ved ridebanen.',active:true}],shifts:[{id:'s1',date:today(),time:'08:00',label:'Morgenfôring',assignedTo:'Anna',originalAssignedTo:'Anna'},{id:'s2',date:today(),time:'17:00',label:'Kveldsfôring',assignedTo:'Marius',originalAssignedTo:'Marius'}],swaps:[]};
-let data=JSON.parse(localStorage.getItem(key)||'null')||seed;let role=localStorage.getItem('forrytterRole')||'user';
-const save=()=>localStorage.setItem(key,JSON.stringify(data));
-function weekNo(){const d=new Date(),x=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));x.setUTCDate(x.getUTCDate()+4-(x.getUTCDay()||7));return Math.ceil((((x-new Date(Date.UTC(x.getUTCFullYear(),0,1)))/86400000)+1)/7)}const w=weekNo();document.getElementById('week').textContent=`Uke ${w} – ${w%2?'oddetallsuke':'partallsuke'}`;
-function openTab(tab){if(tab==='admin'&&role!=='admin')tab='today';document.querySelectorAll('.tab').forEach(x=>x.classList.add('hidden'));document.getElementById(tab).classList.remove('hidden');document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('active',x.dataset.tab===tab))}
-function setRole(r){role=r;localStorage.setItem('forrytterRole',r);openTab('today');render()}
-function render(){renderToday();renderFeeding();renderMessages();renderAdmin();document.querySelector('[data-tab="admin"]').style.display=role==='admin'?'block':'none';roleUser.classList.toggle('activeRole',role==='user');roleAdmin.classList.toggle('activeRole',role==='admin');save()}
-function renderToday(){const mine=data.shifts.filter(s=>s.date===today()&&s.assignedTo===data.currentUser);document.getElementById('today').innerHTML=`<div class="card"><div class="row"><div><h2>${data.currentUser}</h2><span class="pill">${role==='admin'?'Admin-test':'Fôrrytter'}</span></div><select id="userPick" style="width:auto;max-width:46%">${data.riders.map(r=>`<option ${r===data.currentUser?'selected':''}>${r}</option>`).join('')}</select></div></div>${data.messages.filter(m=>m.active).map(m=>`<div class="notice"><b>Beskjed</b><br>${m.text}</div>`).join('')}<div class="card"><h2>Dagens oppgaver</h2><div class="list">${data.tasks.map((t,i)=>`<label class="item"><input type="checkbox" style="width:auto;margin-right:8px" ${localStorage.getItem('task'+i)==='1'?'checked':''} onchange="localStorage.setItem('task${i}',this.checked?'1':'0')">${t}</label>`).join('')}</div></div><div class="card"><h2>Mine fôringer i dag</h2>${mine.length?mine.map(s=>`<div class="item"><b>${s.time} – ${s.label}</b><br><small>Ansvarlig: ${s.assignedTo}</small></div>`).join(''):'<p class="muted">Ingen fôringsvakter i dag.</p>'}</div>`;userPick.onchange=e=>{data.currentUser=e.target.value;render()}}
-function renderFeeding(){const shifts=data.shifts.filter(s=>s.date===today()).sort((a,b)=>a.time.localeCompare(b.time));document.getElementById('feeding').innerHTML=`<div class="card"><h2>Fôring i dag</h2><div class="list">${shifts.map(s=>`<div class="item"><div class="row"><div><b>${s.time} – ${s.label}</b><br><small>${s.assignedTo}</small></div>${s.assignedTo===data.currentUser?`<button class="secondary" onclick="requestSwap('${s.id}')">Bytt</button>`:''}</div></div>`).join('')}</div></div><div class="card"><h2>Mine bytteforespørsler</h2>${data.swaps.filter(x=>x.from===data.currentUser||x.to===data.currentUser).map(x=>swapCard(x,false)).join('')||'<p class="muted">Ingen forespørsler.</p>'}</div>`}
-function swapCard(x,admin){const s=data.shifts.find(y=>y.id===x.shiftId);return `<div class="item"><b>${s?s.time+' – '+s.label:'Fôring'}</b><br><small>${x.from} → ${x.to}</small><br><span class="status">${({pending:'Venter på mottaker',awaiting_admin:'Venter på admin',accepted:'Godkjent',declined:'Avslått'})[x.status]}</span>${!admin&&x.to===data.currentUser&&x.status==='pending'?`<div style="margin-top:8px"><button onclick="acceptSwap('${x.id}')">Godta</button> <button class="danger" onclick="declineSwap('${x.id}')">Avslå</button></div>`:''}${admin&&x.status==='awaiting_admin'?`<div style="margin-top:8px"><button onclick="approveSwap('${x.id}')">Godkjenn</button> <button class="danger" onclick="declineSwap('${x.id}')">Avslå</button></div>`:''}</div>`}
-function requestSwap(id){const opts=data.riders.filter(r=>r!==data.currentUser);const to=prompt('Hvem vil du bytte med?\n'+opts.join(', '),opts[0]||'');if(!to||!data.riders.includes(to))return;data.swaps.push({id:'sw'+Date.now(),shiftId:id,from:data.currentUser,to,status:'pending'});render()}
-function acceptSwap(id){const x=data.swaps.find(x=>x.id===id);if(x)x.status='awaiting_admin';render()}function declineSwap(id){const x=data.swaps.find(x=>x.id===id);if(x)x.status='declined';render()}function approveSwap(id){const x=data.swaps.find(x=>x.id===id),s=x&&data.shifts.find(s=>s.id===x.shiftId);if(x&&s){s.originalAssignedTo=s.originalAssignedTo||s.assignedTo;s.assignedTo=x.to;x.status='accepted'}render()}
-function renderMessages(){document.getElementById('messages').innerHTML=`<div class="card"><h2>Beskjeder</h2>${data.messages.map(m=>`<div class="item">${m.text}</div>`).join('')}</div>`}
-function renderAdmin(){document.getElementById('admin').innerHTML=role==='admin'?`<div class="card"><h2>Admin – fôringer</h2><div class="grid"><label>Dato<input id="adate" type="date" value="${today()}"></label><label>Klokkeslett<input id="atime" type="time" value="12:00"></label></div><label>Type fôring<input id="alabel" value="Lunsjfôring"></label><label>Ansvarlig<select id="arider">${data.riders.map(r=>`<option>${r}</option>`).join('')}</select></label><button style="margin-top:8px" onclick="addShift()">Legg til fôring</button></div><div class="card"><h2>Bytter som venter på admin</h2>${data.swaps.filter(x=>x.status==='awaiting_admin').map(x=>swapCard(x,true)).join('')||'<p class="muted">Ingen bytter venter på godkjenning.</p>'}</div><div class="card"><h2>Ny fellesbeskjed</h2><textarea id="msgText" rows="2" placeholder="Skriv beskjed til alle"></textarea><button style="margin-top:8px" onclick="addMessage()">Publiser beskjed</button></div>`:''}
-function addShift(){data.shifts.push({id:'s'+Date.now(),date:adate.value,time:atime.value,label:alabel.value||'Fôring',assignedTo:arider.value,originalAssignedTo:arider.value});render()}function addMessage(){if(!msgText.value.trim())return;data.messages.unshift({id:'m'+Date.now(),text:msgText.value.trim(),active:true});render()}
-document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>openTab(b.dataset.tab));render();openTab('today');
+const storeKey='forrytterPwaDemoV1';
+const seed={
+ currentUser:'Anna',
+ horses:['Bella','Storm','Luna'],
+ riders:['Anna','Marius','Emma','Sofie'],
+ tasks:['Møkke boks','Fylle vann','Pusse hesten'],
+ messages:[{id:'m1',text:'Husk å lukke porten ved ridebanen.',showOnTv:true,active:true}],
+ shifts:[{id:'s1',date:new Date().toISOString().slice(0,10),time:'08:00',label:'Morgenfôring',assignedTo:'Anna',originalAssignedTo:'Anna',completed:false},{id:'s2',date:new Date().toISOString().slice(0,10),time:'17:00',label:'Kveldsfôring',assignedTo:'Marius',originalAssignedTo:'Marius',completed:false}],
+ swaps:[]
+};
+let data=JSON.parse(localStorage.getItem(storeKey)||'null')||seed;
+let role=localStorage.getItem('forrytterRole')||'user';
+function setRole(nextRole){
+  role=nextRole;
+  localStorage.setItem('forrytterRole',role);
+  const adminBtn=document.querySelector('nav button[data-tab="admin"]');
+  if(adminBtn) adminBtn.style.display=role==='admin'?'block':'none';
+  if(role!=='admin' && !document.getElementById('admin').classList.contains('hidden')){
+    openTab('today');
+  }
+  render();
+}
+const save=()=>localStorage.setItem(storeKey,JSON.stringify(data));
+const iso=()=>new Date().toISOString().slice(0,10);
+function weekNo(d=new Date()){const x=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));x.setUTCDate(x.getUTCDate()+4-(x.getUTCDay()||7));const y=new Date(Date.UTC(x.getUTCFullYear(),0,1));return Math.ceil((((x-y)/86400000)+1)/7)}
+const w=weekNo();document.getElementById('weekLabel').textContent=`Uke ${w} – ${w%2?'oddetallsuke':'partallsuke'}`;
+function render(){
+  renderToday();renderFeeding();renderMessages();
+  if(role==='admin') renderAdmin();
+  const adminBtn=document.querySelector('nav button[data-tab="admin"]');
+  if(adminBtn) adminBtn.style.display=role==='admin'?'block':'none';
+  const u=document.getElementById('roleUser'), a=document.getElementById('roleAdmin');
+  if(u) u.classList.toggle('activeRole',role==='user');
+  if(a) a.classList.toggle('activeRole',role==='admin');
+  save();
+}
+function renderToday(){const mine=data.shifts.filter(s=>s.date===iso()&&s.assignedTo===data.currentUser);document.getElementById('today').innerHTML=`
+<div class="card"><div class="row"><div><h2>${data.currentUser}</h2><span class="pill">${role==='admin'?'Admin-test':'Fôrrytter'}</span></div><select id="userPick" style="width:auto">${data.riders.map(r=>`<option ${r===data.currentUser?'selected':''}>${r}</option>`).join('')}</select></div></div>
+${data.messages.filter(m=>m.active).map(m=>`<div class="notice"><b>Beskjed</b><br>${m.text}</div>`).join('')}
+<div class="card"><h2>Dagens oppgaver</h2><div class="list">${data.tasks.map((t,i)=>`<label class="item task"><input type="checkbox" ${localStorage.getItem('task'+i)==='1'?'checked':''} onchange="localStorage.setItem('task${i}',this.checked?'1':'0')"><span>${t}</span></label>`).join('')}</div></div>
+<div class="card"><h2>Mine fôringer i dag</h2>${mine.length?mine.map(s=>`<div class="item"><b>${s.time} – ${s.label}</b><br><small>Ansvarlig: ${s.assignedTo}</small></div>`).join(''):'<p class="muted">Ingen fôringsvakter i dag.</p>'}</div>`;
+ document.getElementById('userPick').onchange=e=>{data.currentUser=e.target.value;render()}
+}
+function renderFeeding(){const shifts=data.shifts.filter(s=>s.date===iso()).sort((a,b)=>a.time.localeCompare(b.time));document.getElementById('feeding').innerHTML=`<div class="card"><h2>Fôring i dag</h2><div class="list">${shifts.map(s=>`<div class="item"><div class="row"><div><b>${s.time} – ${s.label}</b><br><small>${s.assignedTo}</small></div>${s.assignedTo===data.currentUser?`<button class="secondary" onclick="requestSwap('${s.id}')">Bytt</button>`:''}</div></div>`).join('')}</div></div>
+<div class="card"><h2>Mine bytteforespørsler</h2>${data.swaps.filter(x=>x.from===data.currentUser||x.to===data.currentUser).map(x=>swapCard(x,false)).join('')||'<p class="muted">Ingen forespørsler.</p>'}</div>`}
+function swapCard(x,admin){const s=data.shifts.find(y=>y.id===x.shiftId);return `<div class="item"><b>${s?s.time+' – '+s.label:'Fôring'}</b><br><small>${x.from} → ${x.to}</small><div style="margin-top:8px"><span class="status ${x.status}">${statusText(x.status)}</span></div>${!admin&&x.to===data.currentUser&&x.status==='pending'?`<div style="margin-top:10px"><button onclick="receiverAccept('${x.id}')">Godta</button> <button class="danger" onclick="declineSwap('${x.id}')">Avslå</button></div>`:''}${admin&&x.status==='awaiting_admin'?`<div style="margin-top:10px"><button onclick="adminApprove('${x.id}')">Godkjenn</button> <button class="danger" onclick="adminReject('${x.id}')">Avslå</button></div>`:''}</div>`}
+function statusText(s){return ({pending:'Venter på mottaker',awaiting_admin:'Venter på admin',accepted:'Godkjent',declined:'Avslått'})[s]||s}
+function requestSwap(id){const s=data.shifts.find(x=>x.id===id);const options=data.riders.filter(r=>r!==data.currentUser);const to=prompt('Hvem vil du bytte med?\n'+options.join(', '),options[0]||'');if(!to||!data.riders.includes(to))return alert('Velg en eksisterende fôrrytter.');data.swaps.push({id:'sw'+Date.now(),shiftId:id,from:data.currentUser,to,status:'pending',createdAt:Date.now()});render()}
+function receiverAccept(id){const x=data.swaps.find(s=>s.id===id);if(x)x.status='awaiting_admin';render()}
+function declineSwap(id){const x=data.swaps.find(s=>s.id===id);if(x)x.status='declined';render()}
+function adminApprove(id){const x=data.swaps.find(s=>s.id===id), sh=x&&data.shifts.find(s=>s.id===x.shiftId);if(x&&sh){sh.originalAssignedTo=sh.originalAssignedTo||sh.assignedTo;sh.assignedTo=x.to;x.status='accepted'}render()}
+function adminReject(id){const x=data.swaps.find(s=>s.id===id);if(x)x.status='declined';render()}
+function renderMessages(){document.getElementById('messages').innerHTML=`<div class="card"><h2>Beskjeder</h2>${data.messages.map(m=>`<div class="item"><b>${m.text}</b><br><small>${m.showOnTv?'Vises også på TV':''}</small></div>`).join('')}</div>`}
+function renderAdmin(){document.getElementById('admin').innerHTML=`<div class="card"><h2>Admin – fôringer</h2><div class="grid"><label>Dato<input id="adate" type="date" value="${iso()}"></label><label>Klokkeslett<input id="atime" type="time" value="12:00"></label></div><label>Type fôring<input id="alabel" value="Lunsjfôring"></label><label>Ansvarlig<select id="arider">${data.riders.map(r=>`<option>${r}</option>`).join('')}</select></label><button style="margin-top:10px" onclick="addShift()">Legg til fôring</button></div>
+<div class="card"><h2>Bytteforespørsler</h2>${data.swaps.filter(x=>x.status==='pending'||x.status==='awaiting_admin').map(x=>swapCard(x,true)).join('')||'<p class="muted">Ingen aktive bytteforespørsler.</p>'}</div>
+<div class="card"><h2>Ny fellesbeskjed</h2><textarea id="msgText" rows="3" placeholder="Skriv beskjed til alle"></textarea><label style="display:flex;align-items:center;gap:8px;margin-top:8px"><input id="msgTv" type="checkbox" checked style="width:auto"> Vis på TV i Rideplanleggeren</label><button style="margin-top:10px" onclick="addMessage()">Publiser beskjed</button></div>`}
+function addShift(){data.shifts.push({id:'s'+Date.now(),date:adate.value,time:atime.value,label:alabel.value||'Fôring',assignedTo:arider.value,originalAssignedTo:arider.value,completed:false});render()}
+function addMessage(){if(!msgText.value.trim())return;data.messages.unshift({id:'m'+Date.now(),text:msgText.value.trim(),showOnTv:msgTv.checked,active:true,createdAt:Date.now()});render()}
+function openTab(tab){
+  document.querySelectorAll('.tab').forEach(x=>x.classList.add('hidden'));
+  document.getElementById(tab).classList.remove('hidden');
+  document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));
+  const btn=document.querySelector(`nav button[data-tab="${tab}"]`);
+  if(btn) btn.classList.add('active');
+}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>openTab(b.dataset.tab));
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');
+setRole(role);
+openTab('today');
 </script>
 </body></html>
