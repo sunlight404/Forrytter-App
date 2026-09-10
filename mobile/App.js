@@ -1,5 +1,5 @@
 import 'react-native-url-polyfill/auto';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
@@ -17,6 +17,15 @@ const localDate = () => {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+};
+
+const normalizePhone = value => {
+  const raw = value.trim();
+  if (!raw) return '';
+  if (raw.startsWith('+')) return `+${raw.slice(1).replace(/\D/g, '')}`;
+  if (raw.startsWith('00')) return `+${raw.slice(2).replace(/\D/g, '')}`;
+  const digits = raw.replace(/\D/g, '');
+  return digits.startsWith('47') ? `+${digits}` : `+47${digits}`;
 };
 
 const Btn = ({ title, onPress, secondary, danger, disabled }) => (
@@ -53,7 +62,7 @@ export default function App() {
 
   if (loading) return <Center text="Starter Fôrrytter App …" />;
   if (!session) return <AuthScreen />;
-  if (!membership) return <WaitingScreen email={session.user.email} onRefresh={() => setRefreshKey(x => x + 1)} onLogout={() => supabase.auth.signOut()} />;
+  if (!membership) return <WaitingScreen identifier={session.user.email || session.user.phone || 'Ny bruker'} onRefresh={() => setRefreshKey(x => x + 1)} onLogout={() => supabase.auth.signOut()} />;
 
   const isAdmin = membership.role === 'owner' || membership.role === 'admin';
   const tabs = isAdmin ? ['today','feeding','messages','admin'] : ['today','feeding','messages'];
@@ -67,11 +76,11 @@ export default function App() {
       </View>
       <ScrollView contentContainerStyle={styles.content}>
         {tab === 'today' && <TodayScreen userId={session.user.id} />}
-        {tab === 'feeding' && <FeedingScreen userId={session.user.id} isAdmin={isAdmin} />}
+        {tab === 'feeding' && <FeedingScreen userId={session.user.id} />}
         {tab === 'messages' && <MessagesScreen />}
         {tab === 'admin' && isAdmin && <AdminScreen currentUserId={session.user.id} role={membership.role} />}
       </ScrollView>
-      <View style={[styles.nav, { gridTemplateColumns: undefined }]}>
+      <View style={styles.nav}>
         {tabs.map(t => <Pressable key={t} onPress={() => setTab(t)} style={[styles.navBtn, tab===t && styles.navActive]}><Text style={styles.navText}>{({today:'I dag',feeding:'Fôring',messages:'Beskjeder',admin:'Admin'})[t]}</Text></Pressable>)}
       </View>
     </SafeAreaView>
@@ -80,12 +89,23 @@ export default function App() {
 
 function AuthScreen() {
   const [mode, setMode] = useState('login');
+  const [method, setMethod] = useState('email');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
+  const [smsSent, setSmsSent] = useState(false);
+  const [smsPhone, setSmsPhone] = useState('');
   const [busy, setBusy] = useState(false);
 
-  async function submit() {
+  function changeMethod(next) {
+    setMethod(next);
+    setSmsSent(false);
+    setCode('');
+  }
+
+  async function submitEmail() {
     if (!email.trim() || !password) return Alert.alert('Mangler informasjon', 'Fyll inn e-post og passord.');
     if (mode==='signup' && !name.trim()) return Alert.alert('Mangler navn', 'Skriv inn navnet ditt.');
     setBusy(true);
@@ -97,18 +117,54 @@ function AuthScreen() {
     if (mode==='signup' && !result.data.session) Alert.alert('Sjekk e-posten din', 'Bekreft e-postadressen, og logg deretter inn.');
   }
 
+  async function sendSms() {
+    const normalized = normalizePhone(phone);
+    if (normalized.length < 10) return Alert.alert('Ugyldig nummer', 'Skriv inn et gyldig telefonnummer.');
+    if (mode==='signup' && !name.trim()) return Alert.alert('Mangler navn', 'Skriv inn navnet ditt.');
+    setBusy(true);
+    const { error } = await supabase.auth.signInWithOtp({
+      phone: normalized,
+      options: { shouldCreateUser: mode==='signup', data: mode==='signup' ? { full_name: name.trim() } : undefined }
+    });
+    setBusy(false);
+    if (error) return Alert.alert('Kunne ikke sende SMS', error.message);
+    setSmsPhone(normalized);
+    setSmsSent(true);
+    Alert.alert('Kode sendt', `Vi har sendt en kode til ${normalized}.`);
+  }
+
+  async function verifySms() {
+    if (!code.trim()) return Alert.alert('Mangler kode', 'Skriv inn koden du fikk på SMS.');
+    setBusy(true);
+    const { error } = await supabase.auth.verifyOtp({ phone: smsPhone, token: code.trim(), type: 'sms' });
+    setBusy(false);
+    if (error) return Alert.alert('Feil kode', error.message);
+  }
+
   return <SafeAreaView style={styles.safe}><ScrollView contentContainerStyle={styles.authWrap}><Text style={styles.logo}>🐴</Text><Text style={styles.bigTitle}>Fôrrytter App</Text><Text style={styles.centerMuted}>Stall Nordstjerna</Text><View style={styles.card}>
-    <View style={styles.segment}><Btn title="Logg inn" onPress={() => setMode('login')} secondary={mode!=='login'} /><Btn title="Ny bruker" onPress={() => setMode('signup')} secondary={mode!=='signup'} /></View>
+    <View style={styles.segment}><Btn title="Logg inn" onPress={() => {setMode('login');setSmsSent(false);}} secondary={mode!=='login'} /><Btn title="Ny bruker" onPress={() => {setMode('signup');setSmsSent(false);}} secondary={mode!=='signup'} /></View>
+    <Text style={styles.label}>Velg innlogging</Text>
+    <View style={styles.segment}><Btn title="E-post" onPress={() => changeMethod('email')} secondary={method!=='email'} /><Btn title="Telefon" onPress={() => changeMethod('phone')} secondary={method!=='phone'} /></View>
     {mode==='signup' && <Field label="Fullt navn" value={name} onChangeText={setName} />}
-    <Field label="E-post" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
-    <Field label="Passord" value={password} onChangeText={setPassword} secureTextEntry />
-    <Btn title={busy ? 'Vent …' : mode==='login' ? 'Logg inn' : 'Opprett bruker'} onPress={submit} disabled={busy} />
+    {method==='email' ? <>
+      <Field label="E-post" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
+      <Field label="Passord" value={password} onChangeText={setPassword} secureTextEntry />
+      <Btn title={busy ? 'Vent …' : mode==='login' ? 'Logg inn' : 'Opprett bruker'} onPress={submitEmail} disabled={busy} />
+    </> : <>
+      <Field label="Telefonnummer" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="f.eks. 99 99 99 99" />
+      {!smsSent ? <Btn title={busy ? 'Sender …' : 'Send kode på SMS'} onPress={sendSms} disabled={busy} /> : <>
+        <Field label="Kode fra SMS" value={code} onChangeText={setCode} keyboardType="number-pad" />
+        <Btn title={busy ? 'Sjekker …' : mode==='login' ? 'Logg inn med kode' : 'Bekreft og opprett bruker'} onPress={verifySms} disabled={busy} />
+        <View style={{marginTop:8}}><Btn title="Send ny kode" secondary onPress={sendSms} disabled={busy} /></View>
+      </>}
+      <Text style={styles.help}>Norske nummer kan skrives uten +47. Appen legger til landskode automatisk.</Text>
+    </>}
     {mode==='signup' && <Text style={styles.help}>Nye brukere får ikke admin-tilgang. De må godkjennes av eier/admin før de får tilgang til stallen.</Text>}
   </View></ScrollView></SafeAreaView>;
 }
 
-function WaitingScreen({ email, onRefresh, onLogout }) {
-  return <SafeAreaView style={styles.safe}><View style={styles.centerBox}><Text style={styles.logo}>🐴</Text><Text style={styles.bigTitle}>Venter på godkjenning</Text><Text style={styles.centerMuted}>{email}</Text><Text style={styles.helpCenter}>Kontoen er opprettet, men har ikke tilgang til Stall Nordstjerna ennå. Eier eller admin må godkjenne den.</Text><Btn title="Sjekk på nytt" onPress={onRefresh} /><Btn title="Logg ut" secondary onPress={onLogout} /></View></SafeAreaView>;
+function WaitingScreen({ identifier, onRefresh, onLogout }) {
+  return <SafeAreaView style={styles.safe}><View style={styles.centerBox}><Text style={styles.logo}>🐴</Text><Text style={styles.bigTitle}>Venter på godkjenning</Text><Text style={styles.centerMuted}>{identifier}</Text><Text style={styles.helpCenter}>Kontoen er opprettet, men har ikke tilgang til Stall Nordstjerna ennå. Eier eller admin må godkjenne den.</Text><Btn title="Sjekk på nytt" onPress={onRefresh} /><Btn title="Logg ut" secondary onPress={onLogout} /></View></SafeAreaView>;
 }
 
 function TodayScreen({ userId }) {
@@ -174,5 +230,5 @@ const Empty=({text})=><Text style={styles.muted}>{text}</Text>;
 const Center=({text})=><SafeAreaView style={styles.safe}><View style={styles.centerBox}><Text style={styles.bigTitle}>{text}</Text></View></SafeAreaView>;
 
 const styles=StyleSheet.create({
-  safe:{flex:1,backgroundColor:'#f7f3ea'},header:{padding:14,borderBottomWidth:1,borderBottomColor:'#ded9cf',backgroundColor:'#fff',flexDirection:'row',alignItems:'center',justifyContent:'space-between'},title:{fontSize:21,fontWeight:'800',color:'#283126'},bigTitle:{fontSize:25,fontWeight:'800',color:'#283126',textAlign:'center'},logo:{fontSize:42,textAlign:'center',marginBottom:8},muted:{color:'#6b746a',fontSize:13},centerMuted:{color:'#6b746a',fontSize:14,textAlign:'center',marginBottom:18},content:{padding:10,paddingBottom:90},card:{backgroundColor:'#fff',borderWidth:1,borderColor:'#ded9cf',borderRadius:15,padding:12,marginBottom:10},section:{fontSize:17,fontWeight:'800',marginBottom:10,color:'#283126'},item:{borderWidth:1,borderColor:'#e4e0d7',borderRadius:11,padding:10,marginBottom:8},itemRow:{borderWidth:1,borderColor:'#e4e0d7',borderRadius:11,padding:10,marginBottom:8,flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:8},notice:{backgroundColor:'#fff2c7',padding:10,borderRadius:10,marginBottom:8},bold:{fontWeight:'700',color:'#283126'},done:{textDecorationLine:'line-through',color:'#6b746a'},row:{flexDirection:'row',gap:8,marginTop:8,flexWrap:'wrap'},btn:{backgroundColor:'#5f7652',paddingHorizontal:13,paddingVertical:9,borderRadius:10,minHeight:38,justifyContent:'center'},btnText:{color:'#fff',fontWeight:'700',fontSize:13},btnSecondary:{backgroundColor:'#eef1ec'},btnSecondaryText:{color:'#283126'},btnDanger:{backgroundColor:'#f7e5e3'},btnDangerText:{color:'#9f3f37'},disabled:{opacity:.5},input:{borderWidth:1,borderColor:'#d8d4ca',backgroundColor:'#fff',borderRadius:10,padding:11,fontSize:16,color:'#283126',marginTop:4},label:{fontSize:12,color:'#6b746a'},help:{fontSize:12,color:'#6b746a',marginTop:10,lineHeight:18},helpCenter:{fontSize:14,color:'#6b746a',textAlign:'center',lineHeight:20,marginVertical:18},authWrap:{padding:22,justifyContent:'center',flexGrow:1},centerBox:{padding:24,justifyContent:'center',alignItems:'center',flex:1,gap:10},segment:{flexDirection:'row',gap:8,marginBottom:16},nav:{position:'absolute',left:0,right:0,bottom:0,backgroundColor:'#fff',borderTopWidth:1,borderTopColor:'#ded9cf',flexDirection:'row',paddingBottom:8,paddingTop:6},navBtn:{flex:1,padding:10,alignItems:'center',borderRadius:10,marginHorizontal:3},navActive:{backgroundColor:'#e9efe5'},navText:{fontSize:12,fontWeight:'700',color:'#455443'}
+  safe:{flex:1,backgroundColor:'#f7f3ea'},header:{padding:14,borderBottomWidth:1,borderBottomColor:'#ded9cf',backgroundColor:'#fff',flexDirection:'row',alignItems:'center',justifyContent:'space-between'},title:{fontSize:21,fontWeight:'800',color:'#283126'},bigTitle:{fontSize:25,fontWeight:'800',color:'#283126',textAlign:'center'},logo:{fontSize:42,textAlign:'center',marginBottom:8},muted:{color:'#6b746a',fontSize:13},centerMuted:{color:'#6b746a',fontSize:14,textAlign:'center',marginBottom:18},content:{padding:10,paddingBottom:120},card:{backgroundColor:'#fff',borderWidth:1,borderColor:'#ded9cf',borderRadius:15,padding:12,marginBottom:10},section:{fontSize:17,fontWeight:'800',marginBottom:10,color:'#283126'},item:{borderWidth:1,borderColor:'#e4e0d7',borderRadius:11,padding:10,marginBottom:8},itemRow:{borderWidth:1,borderColor:'#e4e0d7',borderRadius:11,padding:10,marginBottom:8,flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:8},notice:{backgroundColor:'#fff2c7',padding:10,borderRadius:10,marginBottom:8},bold:{fontWeight:'700',color:'#283126'},done:{textDecorationLine:'line-through',color:'#6b746a'},row:{flexDirection:'row',gap:8,marginTop:8,flexWrap:'wrap'},btn:{backgroundColor:'#5f7652',paddingHorizontal:13,paddingVertical:9,borderRadius:10,minHeight:38,justifyContent:'center'},btnText:{color:'#fff',fontWeight:'700',fontSize:13},btnSecondary:{backgroundColor:'#eef1ec'},btnSecondaryText:{color:'#283126'},btnDanger:{backgroundColor:'#f7e5e3'},btnDangerText:{color:'#9f3f37'},disabled:{opacity:.5},input:{borderWidth:1,borderColor:'#d8d4ca',backgroundColor:'#fff',borderRadius:10,padding:11,fontSize:16,color:'#283126',marginTop:4},label:{fontSize:12,color:'#6b746a'},help:{fontSize:12,color:'#6b746a',marginTop:10,lineHeight:18},helpCenter:{fontSize:14,color:'#6b746a',textAlign:'center',lineHeight:20,marginVertical:18},authWrap:{padding:22,justifyContent:'center',flexGrow:1},centerBox:{padding:24,justifyContent:'center',alignItems:'center',flex:1,gap:10},segment:{flexDirection:'row',gap:8,marginBottom:16},nav:{position:'absolute',left:0,right:0,bottom:24,backgroundColor:'#fff',borderTopWidth:1,borderTopColor:'#ded9cf',borderBottomWidth:1,borderBottomColor:'#ded9cf',flexDirection:'row',paddingBottom:10,paddingTop:8},navBtn:{flex:1,paddingVertical:12,paddingHorizontal:8,alignItems:'center',borderRadius:10,marginHorizontal:3,minHeight:44,justifyContent:'center'},navActive:{backgroundColor:'#e9efe5'},navText:{fontSize:12,fontWeight:'700',color:'#455443'}
 });
