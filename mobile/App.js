@@ -18,7 +18,7 @@ const localDate = () => {
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 };
-
+const messageCutoff = () => new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 const normalizePhone = value => {
   const raw = value.trim();
   if (!raw) return '';
@@ -31,6 +31,12 @@ const normalizePhone = value => {
 const Btn = ({ title, onPress, secondary, danger, disabled }) => (
   <Pressable disabled={disabled} onPress={onPress} style={[styles.btn, secondary && styles.btnSecondary, danger && styles.btnDanger, disabled && styles.disabled]}>
     <Text style={[styles.btnText, secondary && styles.btnSecondaryText, danger && styles.btnDangerText]}>{title}</Text>
+  </Pressable>
+);
+
+const Choice = ({ label, selected, onPress }) => (
+  <Pressable onPress={onPress} style={[styles.choice, selected && styles.choiceSelected]}>
+    <Text style={[styles.choiceText, selected && styles.choiceTextSelected]}>{label}</Text>
   </Pressable>
 );
 
@@ -77,7 +83,7 @@ export default function App() {
       <ScrollView contentContainerStyle={styles.content}>
         {tab === 'today' && <TodayScreen userId={session.user.id} />}
         {tab === 'feeding' && <FeedingScreen userId={session.user.id} />}
-        {tab === 'messages' && <MessagesScreen />}
+        {tab === 'messages' && <MessagesScreen isAdmin={isAdmin} />}
         {tab === 'admin' && isAdmin && <AdminScreen currentUserId={session.user.id} role={membership.role} />}
       </ScrollView>
       <View style={styles.nav}>
@@ -99,11 +105,7 @@ function AuthScreen() {
   const [smsPhone, setSmsPhone] = useState('');
   const [busy, setBusy] = useState(false);
 
-  function changeMethod(next) {
-    setMethod(next);
-    setSmsSent(false);
-    setCode('');
-  }
+  function changeMethod(next) { setMethod(next); setSmsSent(false); setCode(''); }
 
   async function submitEmail() {
     if (!email.trim() || !password) return Alert.alert('Mangler informasjon', 'Fyll inn e-post og passord.');
@@ -122,15 +124,10 @@ function AuthScreen() {
     if (normalized.length < 10) return Alert.alert('Ugyldig nummer', 'Skriv inn et gyldig telefonnummer.');
     if (mode==='signup' && !name.trim()) return Alert.alert('Mangler navn', 'Skriv inn navnet ditt.');
     setBusy(true);
-    const { error } = await supabase.auth.signInWithOtp({
-      phone: normalized,
-      options: { shouldCreateUser: mode==='signup', data: mode==='signup' ? { full_name: name.trim() } : undefined }
-    });
+    const { error } = await supabase.auth.signInWithOtp({ phone: normalized, options: { shouldCreateUser: mode==='signup', data: mode==='signup' ? { full_name: name.trim() } : undefined } });
     setBusy(false);
     if (error) return Alert.alert('Kunne ikke sende SMS', error.message);
-    setSmsPhone(normalized);
-    setSmsSent(true);
-    Alert.alert('Kode sendt', `Vi har sendt en kode til ${normalized}.`);
+    setSmsPhone(normalized); setSmsSent(true); Alert.alert('Kode sendt', `Vi har sendt en kode til ${normalized}.`);
   }
 
   async function verifySms() {
@@ -159,7 +156,7 @@ function AuthScreen() {
       </>}
       <Text style={styles.help}>Norske nummer kan skrives uten +47. Appen legger til landskode automatisk.</Text>
     </>}
-    {mode==='signup' && <Text style={styles.help}>Nye brukere får ikke admin-tilgang. De må godkjennes av eier/admin før de får tilgang til stallen.</Text>}
+    {mode==='signup' && <Text style={styles.help}>Nye brukere må godkjennes av eier/admin før de får tilgang til stallen.</Text>}
   </View></ScrollView></SafeAreaView>;
 }
 
@@ -168,19 +165,30 @@ function WaitingScreen({ identifier, onRefresh, onLogout }) {
 }
 
 function TodayScreen({ userId }) {
-  const [tasks, setTasks] = useState([]); const [messages, setMessages] = useState([]); const [shifts, setShifts] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  const [messages, setMessages] = useState([]);
+  const [shifts, setShifts] = useState([]);
+  const [assignment, setAssignment] = useState(null);
   useEffect(() => { load(); }, []);
+
   async function load(){
     const d=localDate();
-    const [t,m,s]=await Promise.all([
-      supabase.from('tasks').select('*').eq('task_date',d).eq('assigned_to',userId).order('created_at'),
-      supabase.from('messages').select('*').eq('active',true).order('created_at',{ascending:false}),
-      supabase.from('feeding_shifts').select('*').eq('shift_date',d).eq('assigned_to',userId).order('shift_time')
+    const [t,m,s,a]=await Promise.all([
+      supabase.from('tasks').select('*,horses(name)').eq('task_date',d).eq('assigned_to',userId).order('created_at'),
+      supabase.from('messages').select('*').eq('active',true).gte('created_at',messageCutoff()).order('created_at',{ascending:false}),
+      supabase.from('feeding_shifts').select('*').eq('shift_date',d).eq('assigned_to',userId).order('shift_time'),
+      supabase.from('horse_assignments').select('*,horses(name)').eq('assignment_date',d).eq('user_id',userId).maybeSingle()
     ]);
-    setTasks(t.data||[]); setMessages(m.data||[]); setShifts(s.data||[]);
+    setTasks(t.data||[]); setMessages(m.data||[]); setShifts(s.data||[]); setAssignment(a.data||null);
   }
   async function toggle(task){ await supabase.from('tasks').update({completed:!task.completed,completed_at:!task.completed?new Date().toISOString():null}).eq('id',task.id); load(); }
-  return <><Section title="Beskjeder">{messages.length?messages.map(x=><View key={x.id} style={styles.notice}><Text>{x.text}</Text></View>):<Empty text="Ingen nye beskjeder."/>}</Section><Section title="Mine oppgaver i dag">{tasks.length?tasks.map(x=><Pressable key={x.id} onPress={()=>toggle(x)} style={styles.item}><Text style={x.completed?styles.done:null}>{x.completed?'✓ ':'○ '}{x.title}</Text></Pressable>):<Empty text="Ingen oppgaver i dag."/>}</Section><Section title="Mine fôringer i dag">{shifts.length?shifts.map(x=><View key={x.id} style={styles.item}><Text style={styles.bold}>{String(x.shift_time).slice(0,5)} · {x.label}</Text></View>):<Empty text="Ingen fôringsvakter i dag."/>}</Section></>;
+
+  return <>
+    <Section title="Min hest i dag">{assignment ? <View style={styles.horseCard}><Text style={styles.horseName}>🐴 {assignment.horses?.name || 'Hest'}</Text></View> : <Empty text="Ingen hest er fordelt til deg i dag."/>}</Section>
+    <Section title="Mine oppgaver">{tasks.length?tasks.map(x=><Pressable key={x.id} onPress={()=>toggle(x)} style={styles.item}><Text style={x.completed?styles.done:null}>{x.completed?'✓ ':'○ '}{x.title}</Text>{x.horses?.name&&<Text style={styles.muted}>Hest: {x.horses.name}</Text>}</Pressable>):<Empty text="Ingen oppgaver i dag."/>}</Section>
+    <Section title="Beskjeder">{messages.length?messages.map(x=><View key={x.id} style={styles.notice}><Text>{x.text}</Text></View>):<Empty text="Ingen nye beskjeder."/>}</Section>
+    <Section title="Mine fôringer i dag">{shifts.length?shifts.map(x=><View key={x.id} style={styles.item}><Text style={styles.bold}>{String(x.shift_time).slice(0,5)} · {x.label}</Text></View>):<Empty text="Ingen fôringsvakter i dag."/>}</Section>
+  </>;
 }
 
 function FeedingScreen({ userId }) {
@@ -206,22 +214,88 @@ function FeedingScreen({ userId }) {
   return <><Section title="Fôring i dag">{shifts.length?shifts.map(s=><View key={s.id} style={styles.itemRow}><View><Text style={styles.bold}>{String(s.shift_time).slice(0,5)} · {s.label}</Text><Text style={styles.muted}>{nameOf(s.assigned_to)}</Text></View>{s.assigned_to===userId&&<Btn title="Bytt" secondary onPress={()=>askSwap(s)}/>}</View>):<Empty text="Ingen fôringer i dag."/>}</Section><Section title="Bytteforespørsler">{swaps.filter(x=>x.from_user===userId||x.to_user===userId).map(x=><View key={x.id} style={styles.item}><Text>{nameOf(x.from_user)} → {nameOf(x.to_user)}</Text><Text style={styles.muted}>{x.status==='pending'?'Venter på mottaker':x.status==='awaiting_admin'?'Venter på admin':x.status==='approved'?'Godkjent':'Avslått'}</Text>{x.to_user===userId&&x.status==='pending'&&<View style={styles.row}><Btn title="Godta" onPress={()=>respond(x.id,true)}/><Btn title="Avslå" danger onPress={()=>respond(x.id,false)}/></View>}</View>)}{!swaps.some(x=>x.from_user===userId||x.to_user===userId)&&<Empty text="Ingen forespørsler."/>}</Section></>;
 }
 
-function MessagesScreen(){const [items,setItems]=useState([]);useEffect(()=>{supabase.from('messages').select('*').eq('active',true).order('created_at',{ascending:false}).then(({data})=>setItems(data||[]));},[]);return <Section title="Beskjeder">{items.length?items.map(x=><View key={x.id} style={styles.item}><Text>{x.text}</Text></View>):<Empty text="Ingen aktive beskjeder."/>}</Section>}
+function MessagesScreen({ isAdmin }){
+  const [items,setItems]=useState([]);
+  useEffect(()=>{load();},[]);
+  async function load(){const {data}=await supabase.from('messages').select('*').eq('active',true).gte('created_at',messageCutoff()).order('created_at',{ascending:false});setItems(data||[]);}
+  async function removeMessage(id){
+    const {error}=await supabase.from('messages').update({active:false}).eq('id',id);
+    if(error) return Alert.alert('Feil',error.message);
+    load();
+  }
+  return <Section title="Beskjeder"><Text style={styles.help}>Beskjeder vises i 24 timer.</Text>{items.length?items.map(x=><View key={x.id} style={styles.itemRow}><View style={{flex:1}}><Text>{x.text}</Text></View>{isAdmin&&<Btn title="Fjern" danger onPress={()=>removeMessage(x.id)}/>}</View>):<Empty text="Ingen aktive beskjeder."/>}</Section>;
+}
 
 function AdminScreen({ currentUserId, role }) {
-  const [requests,setRequests]=useState([]); const [members,setMembers]=useState([]); const [swaps,setSwaps]=useState([]); const [horse,setHorse]=useState(''); const [message,setMessage]=useState(''); const [shiftLabel,setShiftLabel]=useState('Morgenfôring'); const [shiftTime,setShiftTime]=useState('08:00');
+  const [requests,setRequests]=useState([]);
+  const [members,setMembers]=useState([]);
+  const [swaps,setSwaps]=useState([]);
+  const [horses,setHorses]=useState([]);
+  const [horse,setHorse]=useState('');
+  const [message,setMessage]=useState('');
+  const [shiftLabel,setShiftLabel]=useState('Morgenfôring');
+  const [shiftTime,setShiftTime]=useState('08:00');
+  const [selectedUser,setSelectedUser]=useState(null);
+  const [selectedHorse,setSelectedHorse]=useState(null);
+  const [taskTitle,setTaskTitle]=useState('');
+  const [taskDate,setTaskDate]=useState(localDate());
+
   useEffect(()=>{load();},[]);
-  async function load(){const [r,m,s]=await Promise.all([supabase.from('join_requests').select('*').eq('stable_id',STABLE_ID).eq('status','pending').order('created_at'),supabase.from('memberships').select('user_id,role,profiles(full_name)').eq('stable_id',STABLE_ID).eq('active',true),supabase.from('feeding_swap_requests').select('*').eq('stable_id',STABLE_ID).eq('status','awaiting_admin').order('requested_at')]);setRequests(r.data||[]);setMembers(m.data||[]);setSwaps(s.data||[])}
+  async function load(){
+    const [r,m,s,h]=await Promise.all([
+      supabase.from('join_requests').select('*').eq('stable_id',STABLE_ID).eq('status','pending').order('created_at'),
+      supabase.from('memberships').select('user_id,role,profiles(full_name)').eq('stable_id',STABLE_ID).eq('active',true),
+      supabase.from('feeding_swap_requests').select('*').eq('stable_id',STABLE_ID).eq('status','awaiting_admin').order('requested_at'),
+      supabase.from('horses').select('*').eq('stable_id',STABLE_ID).eq('active',true).order('name')
+    ]);
+    setRequests(r.data||[]); setMembers(m.data||[]); setSwaps(s.data||[]); setHorses(h.data||[]);
+  }
   const nameOf=id=>members.find(m=>m.user_id===id)?.profiles?.full_name||id.slice(0,8);
-  async function approveUser(req){const {error}=await supabase.from('memberships').insert({stable_id:STABLE_ID,user_id:req.user_id,role:'rider',active:true});if(error&&!error.message.includes('duplicate'))return Alert.alert('Feil',error.message);await supabase.from('join_requests').update({status:'approved'}).eq('id',req.id);load()}
-  async function declineUser(req){await supabase.from('join_requests').update({status:'declined'}).eq('id',req.id);load()}
-  async function makeAdmin(m){if(role!=='owner')return Alert.alert('Kun eier','Bare eier kan endre admin-tilgang.');const next=m.role==='admin'?'rider':'admin';await supabase.from('memberships').update({role:next}).eq('stable_id',STABLE_ID).eq('user_id',m.user_id);load()}
-  async function addHorse(){if(!horse.trim())return;const {error}=await supabase.from('horses').insert({stable_id:STABLE_ID,name:horse.trim()});if(error)Alert.alert('Feil',error.message);else{setHorse('');Alert.alert('Lagt til','Hesten er lagt til.')}}
-  async function addMessage(){if(!message.trim())return;const {error}=await supabase.from('messages').insert({stable_id:STABLE_ID,text:message.trim(),created_by:currentUserId});if(error)Alert.alert('Feil',error.message);else{setMessage('');Alert.alert('Publisert','Beskjeden er sendt til alle.')}}
-  async function addShift(){const target=members.find(m=>m.role==='rider'||m.role==='admin'||m.role==='owner');if(!target)return Alert.alert('Ingen brukere');const {error}=await supabase.from('feeding_shifts').insert({stable_id:STABLE_ID,shift_date:localDate(),shift_time:shiftTime,label:shiftLabel,assigned_to:target.user_id,original_assigned_to:target.user_id,created_by:currentUserId});if(error)Alert.alert('Feil',error.message);else Alert.alert('Lagt til','Fôringen er opprettet.')}
-  async function approveSwap(x){const {data:shift}=await supabase.from('feeding_shifts').select('*').eq('id',x.shift_id).single();if(!shift)return;const a=await supabase.from('feeding_shifts').update({assigned_to:x.to_user,original_assigned_to:shift.original_assigned_to||shift.assigned_to}).eq('id',x.shift_id);if(a.error)return Alert.alert('Feil',a.error.message);await supabase.from('feeding_swap_requests').update({status:'approved',admin_decided_at:new Date().toISOString(),admin_decided_by:currentUserId}).eq('id',x.id);load()}
-  async function declineSwap(x){await supabase.from('feeding_swap_requests').update({status:'declined',admin_decided_at:new Date().toISOString(),admin_decided_by:currentUserId}).eq('id',x.id);load()}
-  return <><Section title="Nye brukere">{requests.length?requests.map(r=><View key={r.id} style={styles.item}><Text style={styles.bold}>Ny konto · {r.user_id.slice(0,8)}</Text><Text style={styles.muted}>Venter på tilgang</Text><View style={styles.row}><Btn title="Godkjenn" onPress={()=>approveUser(r)}/><Btn title="Avslå" danger onPress={()=>declineUser(r)}/></View></View>):<Empty text="Ingen nye brukere venter."/>}</Section><Section title="Brukere og roller">{members.map(m=><View key={m.user_id} style={styles.itemRow}><View><Text style={styles.bold}>{m.profiles?.full_name||'Bruker'}</Text><Text style={styles.muted}>{m.role}</Text></View>{role==='owner'&&m.user_id!==currentUserId&&<Btn title={m.role==='admin'?'Fjern admin':'Gjør admin'} secondary onPress={()=>makeAdmin(m)}/>}</View>)}</Section><Section title="Bytter som venter på admin">{swaps.length?swaps.map(x=><View key={x.id} style={styles.item}><Text>{nameOf(x.from_user)} → {nameOf(x.to_user)}</Text><View style={styles.row}><Btn title="Godkjenn" onPress={()=>approveSwap(x)}/><Btn title="Avslå" danger onPress={()=>declineSwap(x)}/></View></View>):<Empty text="Ingen bytter venter."/>}</Section><Section title="Legg til hest"><Field label="Navn" value={horse} onChangeText={setHorse}/><Btn title="Legg til hest" onPress={addHorse}/></Section><Section title="Ny fôring i dag"><Field label="Type" value={shiftLabel} onChangeText={setShiftLabel}/><Field label="Klokkeslett (HH:MM)" value={shiftTime} onChangeText={setShiftTime}/><Btn title="Legg til fôring" onPress={addShift}/><Text style={styles.help}>Testversjonen legger vakten på første aktive bruker. Vi legger inn full bruker- og datovelger i neste runde.</Text></Section><Section title="Ny fellesbeskjed"><Field label="Beskjed" value={message} onChangeText={setMessage} multiline/><Btn title="Publiser" onPress={addMessage}/></Section></>;
+  async function approveUser(req){const {error}=await supabase.from('memberships').insert({stable_id:STABLE_ID,user_id:req.user_id,role:'rider',active:true});if(error&&!error.message.includes('duplicate'))return Alert.alert('Feil',error.message);await supabase.from('join_requests').update({status:'approved'}).eq('id',req.id);load();}
+  async function declineUser(req){await supabase.from('join_requests').update({status:'declined'}).eq('id',req.id);load();}
+  async function setRoleFor(m,next){if(role!=='owner')return Alert.alert('Kun eier','Bare eier kan endre admin-tilgang.');if(m.role==='owner')return;const {error}=await supabase.from('memberships').update({role:next}).eq('stable_id',STABLE_ID).eq('user_id',m.user_id);if(error)Alert.alert('Feil',error.message);else load();}
+  async function addHorse(){if(!horse.trim())return;const {error}=await supabase.from('horses').insert({stable_id:STABLE_ID,name:horse.trim()});if(error)Alert.alert('Feil',error.message);else{setHorse('');load();Alert.alert('Lagt til','Hesten er nå tilgjengelig når du fordeler hest.');}}
+  async function saveHorseAssignment(){
+    if(!selectedUser||!selectedHorse)return Alert.alert('Velg fôrrytter og hest');
+    const {error}=await supabase.from('horse_assignments').upsert({stable_id:STABLE_ID,assignment_date:taskDate,user_id:selectedUser,horse_id:selectedHorse,created_by:currentUserId},{onConflict:'stable_id,assignment_date,user_id'});
+    if(error)Alert.alert('Feil',error.message);else Alert.alert('Lagret','Hesten er fordelt til fôrrytteren.');
+  }
+  async function addTask(){
+    if(!selectedUser||!selectedHorse)return Alert.alert('Velg fôrrytter og hest');
+    if(!taskTitle.trim())return Alert.alert('Skriv inn oppgave');
+    const {error}=await supabase.from('tasks').insert({stable_id:STABLE_ID,title:taskTitle.trim(),task_date:taskDate,assigned_to:selectedUser,horse_id:selectedHorse});
+    if(error)Alert.alert('Feil',error.message);else{setTaskTitle('');Alert.alert('Lagt til','Oppgaven vises hos fôrrytteren på valgt dato.');}
+  }
+  async function addMessage(){if(!message.trim())return;const {error}=await supabase.from('messages').insert({stable_id:STABLE_ID,text:message.trim(),created_by:currentUserId});if(error)Alert.alert('Feil',error.message);else{setMessage('');Alert.alert('Publisert','Beskjeden vises i 24 timer.');}}
+  async function addShift(){const target=members.find(m=>m.role==='rider'||m.role==='admin'||m.role==='owner');if(!target)return Alert.alert('Ingen brukere');const {error}=await supabase.from('feeding_shifts').insert({stable_id:STABLE_ID,shift_date:localDate(),shift_time:shiftTime,label:shiftLabel,assigned_to:target.user_id,original_assigned_to:target.user_id,created_by:currentUserId});if(error)Alert.alert('Feil',error.message);else Alert.alert('Lagt til','Fôringen er opprettet.');}
+  async function approveSwap(x){const {data:shift}=await supabase.from('feeding_shifts').select('*').eq('id',x.shift_id).single();if(!shift)return;const a=await supabase.from('feeding_shifts').update({assigned_to:x.to_user,original_assigned_to:shift.original_assigned_to||shift.assigned_to}).eq('id',x.shift_id);if(a.error)return Alert.alert('Feil',a.error.message);await supabase.from('feeding_swap_requests').update({status:'approved',admin_decided_at:new Date().toISOString(),admin_decided_by:currentUserId}).eq('id',x.id);load();}
+  async function declineSwap(x){await supabase.from('feeding_swap_requests').update({status:'declined',admin_decided_at:new Date().toISOString(),admin_decided_by:currentUserId}).eq('id',x.id);load();}
+
+  return <>
+    <Section title="Nye brukere">{requests.length?requests.map(r=><View key={r.id} style={styles.item}><Text style={styles.bold}>Ny konto · {r.user_id.slice(0,8)}</Text><Text style={styles.muted}>Venter på tilgang</Text><View style={styles.row}><Btn title="Godkjenn" onPress={()=>approveUser(r)}/><Btn title="Avslå" danger onPress={()=>declineUser(r)}/></View></View>):<Empty text="Ingen nye brukere venter."/>}</Section>
+
+    <Section title="Brukere og roller">{members.map(m=><View key={m.user_id} style={styles.item}><Text style={styles.bold}>{m.profiles?.full_name||'Bruker'}</Text><Text style={styles.muted}>{m.role==='owner'?'Eier':m.role==='admin'?'Admin':'Fôrrytter'}</Text>{role==='owner'&&m.user_id!==currentUserId&&m.role!=='owner'&&<View style={styles.row}><Btn title="Fôrrytter" secondary={m.role!=='rider'} onPress={()=>setRoleFor(m,'rider')}/><Btn title="Admin" secondary={m.role!=='admin'} onPress={()=>setRoleFor(m,'admin')}/></View>}</View>)}</Section>
+
+    <Section title="Fordel hest og oppgaver">
+      <Text style={styles.label}>1. Velg fôrrytter</Text><View style={styles.choiceWrap}>{members.filter(m=>m.role!=='owner'||m.user_id===currentUserId).map(m=><Choice key={m.user_id} label={m.profiles?.full_name||'Bruker'} selected={selectedUser===m.user_id} onPress={()=>setSelectedUser(m.user_id)}/>)}</View>
+      <Text style={styles.label}>2. Velg hest</Text><View style={styles.choiceWrap}>{horses.map(h=><Choice key={h.id} label={h.name} selected={selectedHorse===h.id} onPress={()=>setSelectedHorse(h.id)}/>)}</View>
+      {!horses.length&&<Text style={styles.help}>Legg til hester i seksjonen «Hester» under først.</Text>}
+      <Field label="3. Dato (ÅÅÅÅ-MM-DD)" value={taskDate} onChangeText={setTaskDate}/>
+      <Btn title="Lagre hest til fôrrytter" onPress={saveHorseAssignment}/>
+      <View style={styles.divider}/>
+      <Field label="4. Oppgave" value={taskTitle} onChangeText={setTaskTitle} placeholder="f.eks. Møkke boks, fylle vann, pusse"/>
+      <Btn title="Legg til oppgave" onPress={addTask}/>
+      <Text style={styles.help}>Fôrrytteren ser valgt hest øverst på «I dag», og oppgavene kan krysses av når de er gjort.</Text>
+    </Section>
+
+    <Section title="Hester">{horses.length?horses.map(h=><View key={h.id} style={styles.item}><Text style={styles.bold}>🐴 {h.name}</Text></View>):<Empty text="Ingen hester lagt inn ennå."/>}<Field label="Ny hest" value={horse} onChangeText={setHorse}/><Btn title="Legg til hest" onPress={addHorse}/><Text style={styles.help}>Hester du legger til her blir valgene i «Fordel hest og oppgaver».</Text></Section>
+
+    <Section title="Bytter som venter på admin">{swaps.length?swaps.map(x=><View key={x.id} style={styles.item}><Text>{nameOf(x.from_user)} → {nameOf(x.to_user)}</Text><View style={styles.row}><Btn title="Godkjenn" onPress={()=>approveSwap(x)}/><Btn title="Avslå" danger onPress={()=>declineSwap(x)}/></View></View>):<Empty text="Ingen bytter venter."/>}</Section>
+
+    <Section title="Ny fellesbeskjed"><Field label="Beskjed" value={message} onChangeText={setMessage} multiline/><Btn title="Publiser i 24 timer" onPress={addMessage}/></Section>
+
+    <Section title="Ny fôring i dag"><Field label="Type" value={shiftLabel} onChangeText={setShiftLabel}/><Field label="Klokkeslett (HH:MM)" value={shiftTime} onChangeText={setShiftTime}/><Btn title="Legg til fôring" onPress={addShift}/><Text style={styles.help}>Fôringsdelen får egen bruker- og datovelger i en senere oppdatering.</Text></Section>
+  </>;
 }
 
 const Field=({label,...props})=><View style={{marginBottom:12}}><Text style={styles.label}>{label}</Text><TextInput {...props} style={[styles.input,props.multiline&&{minHeight:80,textAlignVertical:'top'}]} /></View>;
@@ -230,5 +304,16 @@ const Empty=({text})=><Text style={styles.muted}>{text}</Text>;
 const Center=({text})=><SafeAreaView style={styles.safe}><View style={styles.centerBox}><Text style={styles.bigTitle}>{text}</Text></View></SafeAreaView>;
 
 const styles=StyleSheet.create({
-  safe:{flex:1,backgroundColor:'#f7f3ea'},header:{padding:14,borderBottomWidth:1,borderBottomColor:'#ded9cf',backgroundColor:'#fff',flexDirection:'row',alignItems:'center',justifyContent:'space-between'},title:{fontSize:21,fontWeight:'800',color:'#283126'},bigTitle:{fontSize:25,fontWeight:'800',color:'#283126',textAlign:'center'},logo:{fontSize:42,textAlign:'center',marginBottom:8},muted:{color:'#6b746a',fontSize:13},centerMuted:{color:'#6b746a',fontSize:14,textAlign:'center',marginBottom:18},content:{padding:10,paddingBottom:120},card:{backgroundColor:'#fff',borderWidth:1,borderColor:'#ded9cf',borderRadius:15,padding:12,marginBottom:10},section:{fontSize:17,fontWeight:'800',marginBottom:10,color:'#283126'},item:{borderWidth:1,borderColor:'#e4e0d7',borderRadius:11,padding:10,marginBottom:8},itemRow:{borderWidth:1,borderColor:'#e4e0d7',borderRadius:11,padding:10,marginBottom:8,flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:8},notice:{backgroundColor:'#fff2c7',padding:10,borderRadius:10,marginBottom:8},bold:{fontWeight:'700',color:'#283126'},done:{textDecorationLine:'line-through',color:'#6b746a'},row:{flexDirection:'row',gap:8,marginTop:8,flexWrap:'wrap'},btn:{backgroundColor:'#5f7652',paddingHorizontal:13,paddingVertical:9,borderRadius:10,minHeight:38,justifyContent:'center'},btnText:{color:'#fff',fontWeight:'700',fontSize:13},btnSecondary:{backgroundColor:'#eef1ec'},btnSecondaryText:{color:'#283126'},btnDanger:{backgroundColor:'#f7e5e3'},btnDangerText:{color:'#9f3f37'},disabled:{opacity:.5},input:{borderWidth:1,borderColor:'#d8d4ca',backgroundColor:'#fff',borderRadius:10,padding:11,fontSize:16,color:'#283126',marginTop:4},label:{fontSize:12,color:'#6b746a'},help:{fontSize:12,color:'#6b746a',marginTop:10,lineHeight:18},helpCenter:{fontSize:14,color:'#6b746a',textAlign:'center',lineHeight:20,marginVertical:18},authWrap:{padding:22,justifyContent:'center',flexGrow:1},centerBox:{padding:24,justifyContent:'center',alignItems:'center',flex:1,gap:10},segment:{flexDirection:'row',gap:8,marginBottom:16},nav:{position:'absolute',left:0,right:0,bottom:24,backgroundColor:'#fff',borderTopWidth:1,borderTopColor:'#ded9cf',borderBottomWidth:1,borderBottomColor:'#ded9cf',flexDirection:'row',paddingBottom:10,paddingTop:8},navBtn:{flex:1,paddingVertical:12,paddingHorizontal:8,alignItems:'center',borderRadius:10,marginHorizontal:3,minHeight:44,justifyContent:'center'},navActive:{backgroundColor:'#e9efe5'},navText:{fontSize:12,fontWeight:'700',color:'#455443'}
+  safe:{flex:1,backgroundColor:'#f7f3ea'},
+  header:{padding:14,borderBottomWidth:1,borderBottomColor:'#ded9cf',backgroundColor:'#fff',flexDirection:'row',alignItems:'center',justifyContent:'space-between'},
+  title:{fontSize:21,fontWeight:'800',color:'#283126'},bigTitle:{fontSize:25,fontWeight:'800',color:'#283126',textAlign:'center'},logo:{fontSize:42,textAlign:'center',marginBottom:8},
+  muted:{color:'#6b746a',fontSize:13},centerMuted:{color:'#6b746a',fontSize:14,textAlign:'center',marginBottom:18},
+  content:{padding:10,paddingBottom:120},card:{backgroundColor:'#fff',borderWidth:1,borderColor:'#ded9cf',borderRadius:15,padding:12,marginBottom:10},section:{fontSize:17,fontWeight:'800',marginBottom:10,color:'#283126'},
+  item:{borderWidth:1,borderColor:'#e4e0d7',borderRadius:11,padding:10,marginBottom:8},itemRow:{borderWidth:1,borderColor:'#e4e0d7',borderRadius:11,padding:10,marginBottom:8,flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:8},
+  notice:{backgroundColor:'#fff2c7',padding:10,borderRadius:10,marginBottom:8},horseCard:{backgroundColor:'#eef1ec',padding:14,borderRadius:12},horseName:{fontSize:20,fontWeight:'800',color:'#283126'},bold:{fontWeight:'700',color:'#283126'},done:{textDecorationLine:'line-through',color:'#6b746a'},
+  row:{flexDirection:'row',gap:8,marginTop:8,flexWrap:'wrap'},btn:{backgroundColor:'#5f7652',paddingHorizontal:13,paddingVertical:9,borderRadius:10,minHeight:38,justifyContent:'center'},btnText:{color:'#fff',fontWeight:'700',fontSize:13},btnSecondary:{backgroundColor:'#eef1ec'},btnSecondaryText:{color:'#283126'},btnDanger:{backgroundColor:'#f7e5e3'},btnDangerText:{color:'#9f3f37'},disabled:{opacity:.5},
+  input:{borderWidth:1,borderColor:'#d8d4ca',backgroundColor:'#fff',borderRadius:10,padding:11,fontSize:16,color:'#283126',marginTop:4},label:{fontSize:12,color:'#6b746a',marginBottom:6},help:{fontSize:12,color:'#6b746a',marginTop:10,lineHeight:18},helpCenter:{fontSize:14,color:'#6b746a',textAlign:'center',lineHeight:20,marginVertical:18},
+  authWrap:{padding:22,justifyContent:'center',flexGrow:1},centerBox:{padding:24,justifyContent:'center',alignItems:'center',flex:1,gap:10},segment:{flexDirection:'row',gap:8,marginBottom:16},
+  choiceWrap:{flexDirection:'row',flexWrap:'wrap',gap:8,marginBottom:14},choice:{borderWidth:1,borderColor:'#d8d4ca',borderRadius:999,paddingHorizontal:12,paddingVertical:8,backgroundColor:'#fff'},choiceSelected:{backgroundColor:'#5f7652',borderColor:'#5f7652'},choiceText:{color:'#455443',fontWeight:'700'},choiceTextSelected:{color:'#fff'},divider:{height:1,backgroundColor:'#e4e0d7',marginVertical:14},
+  nav:{position:'absolute',left:0,right:0,bottom:24,backgroundColor:'#fff',borderTopWidth:1,borderTopColor:'#ded9cf',borderBottomWidth:1,borderBottomColor:'#ded9cf',flexDirection:'row',paddingBottom:10,paddingTop:8},navBtn:{flex:1,paddingVertical:12,paddingHorizontal:8,alignItems:'center',borderRadius:10,marginHorizontal:3,minHeight:44,justifyContent:'center'},navActive:{backgroundColor:'#e9efe5'},navText:{fontSize:12,fontWeight:'700',color:'#455443'}
 });
