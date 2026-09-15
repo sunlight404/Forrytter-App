@@ -3,3 +3,5 @@ node_modules/
 dist/
 *.log
 supabase/.temp/
+mobile/build-status.json
+mobile/build-log.txt

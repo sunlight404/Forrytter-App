@@ -1,6 +1,7 @@
 import 'react-native-url-polyfill/auto';
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, AppState, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AppState, Platform, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert } from './dialogs';
 import { STANDARD_TASKS, nextWeekend, isWeekend, feedingLabel, timeKey, upcomingShiftFilter } from './overview';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
@@ -45,7 +46,7 @@ const normalizePhone = value => {
 };
 
 const Btn = ({ title, onPress, secondary, danger, disabled }) => (
-  <Pressable disabled={disabled} onPress={onPress} style={[styles.btn, secondary && styles.btnSecondary, danger && styles.btnDanger, disabled && styles.disabled]}>
+  <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={[styles.btn, secondary && styles.btnSecondary, danger && styles.btnDanger, disabled && styles.disabled]}>
     <Text style={[styles.btnText, secondary && styles.btnSecondaryText, danger && styles.btnDangerText]}>{title}</Text>
   </Pressable>
 );
@@ -412,13 +413,13 @@ function AdminScreen({ currentUserId, role }) {
   </>;
 }
 
-const Field=({label,...props})=><View style={{marginBottom:12}}><Text style={styles.label}>{label}</Text><TextInput {...props} style={[styles.input,props.multiline&&{minHeight:80,textAlignVertical:'top'}]} /></View>;
+const Field=({label,...props})=><View style={{marginBottom:12}}><Text style={styles.label}>{label}</Text><TextInput accessibilityLabel={label} {...props} style={[styles.input,props.multiline&&{minHeight:80,textAlignVertical:'top'}]} /></View>;
 const Section=({title,children})=><View style={styles.card}><Text style={styles.section}>{title}</Text>{children}</View>;
 const Empty=({text})=><Text style={styles.muted}>{text}</Text>;
 const Center=({text})=><SafeAreaView style={styles.safe}><View style={styles.centerBox}><Text style={styles.bigTitle}>{text}</Text></View></SafeAreaView>;
 
 const styles=StyleSheet.create({
-  safe:{flex:1,backgroundColor:'#f7f3ea'},
+  safe:{flex:1,backgroundColor:'#f7f3ea',...(Platform.OS==='web'?{width:'100%',maxWidth:1000,alignSelf:'center'}:{})},
   header:{padding:14,borderBottomWidth:1,borderBottomColor:'#ded9cf',backgroundColor:'#fff',flexDirection:'row',alignItems:'center',justifyContent:'space-between'},
   title:{fontSize:21,fontWeight:'800',color:'#283126'},bigTitle:{fontSize:25,fontWeight:'800',color:'#283126',textAlign:'center'},logo:{fontSize:42,textAlign:'center',marginBottom:8},
   muted:{color:'#6b746a',fontSize:13},centerMuted:{color:'#6b746a',fontSize:14,textAlign:'center',marginBottom:18},
@@ -427,8 +428,8 @@ const styles=StyleSheet.create({
   notice:{backgroundColor:'#fff2c7',padding:10,borderRadius:10,marginBottom:8},horseCard:{backgroundColor:'#eef1ec',padding:14,borderRadius:12},horseName:{fontSize:20,fontWeight:'800',color:'#283126'},bold:{fontWeight:'700',color:'#283126'},done:{textDecorationLine:'line-through',color:'#6b746a'},
   row:{flexDirection:'row',gap:8,marginTop:8,flexWrap:'wrap'},btn:{backgroundColor:'#5f7652',paddingHorizontal:13,paddingVertical:9,borderRadius:10,minHeight:38,justifyContent:'center'},btnText:{color:'#fff',fontWeight:'700',fontSize:13},btnSecondary:{backgroundColor:'#eef1ec'},btnSecondaryText:{color:'#283126'},btnDanger:{backgroundColor:'#f7e5e3'},btnDangerText:{color:'#9f3f37'},disabled:{opacity:.5},
   input:{borderWidth:1,borderColor:'#d8d4ca',backgroundColor:'#fff',borderRadius:10,padding:11,fontSize:16,color:'#283126',marginTop:4},label:{fontSize:12,color:'#6b746a',marginBottom:6},help:{fontSize:12,color:'#6b746a',marginTop:10,lineHeight:18},helpCenter:{fontSize:14,color:'#6b746a',textAlign:'center',lineHeight:20,marginVertical:18},
-  authWrap:{padding:22,justifyContent:'center',flexGrow:1},centerBox:{padding:24,justifyContent:'center',alignItems:'center',flex:1,gap:10},segment:{flexDirection:'row',gap:8,marginBottom:16},
+  authWrap:{width:'100%',maxWidth:560,alignSelf:'center',padding:22,justifyContent:'center',flexGrow:1},centerBox:{padding:24,justifyContent:'center',alignItems:'center',flex:1,gap:10},segment:{flexDirection:'row',gap:8,marginBottom:16},
   choiceWrap:{flexDirection:'row',flexWrap:'wrap',gap:8,marginBottom:14},choice:{borderWidth:1,borderColor:'#d8d4ca',borderRadius:999,paddingHorizontal:12,paddingVertical:8,backgroundColor:'#fff'},choiceSelected:{backgroundColor:'#5f7652',borderColor:'#5f7652'},choiceText:{color:'#455443',fontWeight:'700'},choiceTextSelected:{color:'#fff'},divider:{height:1,backgroundColor:'#e4e0d7',marginVertical:14},
   calendar:{borderWidth:1,borderColor:'#e4e0d7',borderRadius:12,padding:8,marginBottom:12},calendarHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginBottom:8},calendarTitle:{fontWeight:'800',fontSize:15,color:'#283126'},weekRow:{flexDirection:'row'},weekLabel:{width:'14.285%',textAlign:'center',fontSize:11,color:'#6b746a',fontWeight:'700',paddingVertical:6},calendarGrid:{flexDirection:'row',flexWrap:'wrap'},dayCell:{width:'14.285%',height:44,alignItems:'center',justifyContent:'center',borderRadius:9},dayActive:{backgroundColor:'#5f7652'},dayDisabled:{opacity:.28},dayText:{color:'#283126',fontWeight:'600'},dayTextActive:{color:'#fff',fontWeight:'800'},dayTextDisabled:{color:'#8a8f89'},dot:{width:5,height:5,borderRadius:3,backgroundColor:'#5f7652',marginTop:2},dotActive:{backgroundColor:'#fff'},selectedDate:{fontSize:12,color:'#6b746a',marginTop:8,textAlign:'center'},
-  nav:{position:'absolute',left:0,right:0,bottom:24,backgroundColor:'#fff',borderTopWidth:1,borderTopColor:'#ded9cf',borderBottomWidth:1,borderBottomColor:'#ded9cf',flexDirection:'row',paddingBottom:10,paddingTop:8},navBtn:{flex:1,paddingVertical:12,paddingHorizontal:8,alignItems:'center',borderRadius:10,marginHorizontal:3,minHeight:44,justifyContent:'center'},navActive:{backgroundColor:'#e9efe5'},navText:{fontSize:12,fontWeight:'700',color:'#455443'}
+  nav:{position:'absolute',left:0,right:0,bottom:Platform.OS==='web'?0:24,backgroundColor:'#fff',borderTopWidth:1,borderTopColor:'#ded9cf',borderBottomWidth:1,borderBottomColor:'#ded9cf',flexDirection:'row',paddingBottom:10,paddingTop:8},navBtn:{flex:1,paddingVertical:12,paddingHorizontal:8,alignItems:'center',borderRadius:10,marginHorizontal:3,minHeight:44,justifyContent:'center'},navActive:{backgroundColor:'#e9efe5'},navText:{fontSize:12,fontWeight:'700',color:'#455443'}
 });

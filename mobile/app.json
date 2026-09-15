@@ -7,12 +7,27 @@
     "userInterfaceStyle": "light",
     "android": {
       "package": "no.stallnordstjerna.forrytter",
-      "versionCode": 3
+      "versionCode": 3,
+      "adaptiveIcon": {
+        "foregroundImage": "./icon.jpg",
+        "backgroundColor": "#000000"
+      }
     },
     "ios": {
       "bundleIdentifier": "no.stallnordstjerna.forrytter",
       "buildNumber": "3",
       "supportsTablet": false
+    },
+    "icon": "./icon.jpg",
+    "extra": {
+      "eas": {
+        "projectId": "4f1d699b-e50a-4b43-8fb8-94da0bfac4d2"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./icon.jpg"
     }
   }
 }

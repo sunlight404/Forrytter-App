@@ -63,3 +63,18 @@ Dette krever EAS-innlogging/prosjektoppsett; iOS krever Apple-signering. Expo-ek
 Supabase-kontrollen før og etter migrasjonen viste de samme eksisterende varslene: eldre funksjoner med forhøyede rettigheter, manglende policy på app_config (tilgangen er stengt), og deaktivert kontroll av lekkede passord. Ingen nye varsler kom fra denne migrasjonen. Se [databasekontrollen](https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable) og [passordbeskyttelse](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection).
 
 Installasjonen rapporterte 10 moderate avhengighetsvarsler. Disse bør behandles separat fra funksjonsoppdateringen; automatiske hovedversjonsoppgraderinger er ikke utført.
+
+## PC og iPhone – nettapp
+
+Nettappen bruker samme appkode og Supabase-data som Android-appen.
+
+- PC: Åpne nettadressen i Edge eller Chrome. Nettleserens installeringsmeny kan legge den til som en egen app.
+- iPhone: Åpne nettadressen i Safari, velg Del og Legg til på Hjem-skjerm.
+- Internett kreves for oppdaterte data og lagring. Ingen stalldata eller innlogging lagres i service worker-cachen.
+- Dette er en nettapp på iPhone. En egen signert iOS-app via TestFlight krever Apple Developer-medlemskap.
+
+Utvikling: `npm run web`. Publiserbar eksport: `npm run build:web`.
+
+Web har egne bekreftelsesvinduer, inkludert valgene ved bytte og fjerning. Native Android/iOS beholder de opprinnelige systemdialogene. Innloggingsvisningen er kontrollert ved PC-bredde og 390 × 844, inkludert e-post-/telefonvalg og manglende-informasjon-dialoger. Den innloggede nettversjonen må også prøves med en godkjent stallkonto; ingen testinnlogging eller kontodata er lagt inn i appen.
+
+Publisert nettapp: https://forrytter-stall-nordstjerna.expo.app
