@@ -1,6 +1,7 @@
 import 'react-native-url-polyfill/auto';
-import React, { useEffect, useState } from 'react';
-import { Alert, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Alert, AppState, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
+import { STANDARD_TASKS, nextWeekend, isWeekend, feedingLabel, timeKey, upcomingShiftFilter } from './overview';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 
@@ -129,7 +130,7 @@ export default function App() {
         {tab === 'admin' && isAdmin && <AdminScreen currentUserId={session.user.id} role={membership.role} />}
       </ScrollView>
       <View style={styles.nav}>
-        {tabs.map(t => <Pressable key={t} onPress={() => setTab(t)} style={[styles.navBtn, tab===t && styles.navActive]}><Text style={styles.navText}>{({today:'I dag',feeding:'Fôring',messages:'Beskjeder',admin:'Admin'})[t]}</Text></Pressable>)}
+        {tabs.map(t => <Pressable key={t} onPress={() => setTab(t)} style={[styles.navBtn, tab===t && styles.navActive]}><Text style={styles.navText}>{({today:'Min oversikt',feeding:'Fôring',messages:'Beskjeder',admin:'Admin'})[t]}</Text></Pressable>)}
       </View>
     </SafeAreaView>
   );
@@ -210,26 +211,72 @@ function TodayScreen({ userId }) {
   const [tasks, setTasks] = useState([]);
   const [messages, setMessages] = useState([]);
   const [shifts, setShifts] = useState([]);
-  const [assignment, setAssignment] = useState(null);
-  useEffect(() => { load(); }, []);
+  const [assignments, setAssignments] = useState([]);
+  const [nextAssignment, setNextAssignment] = useState(null);
+  const [nextShift, setNextShift] = useState(null);
+  const [selectedDate, setSelectedDate] = useState(localDate());
+  const [today, setToday] = useState(localDate());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(null);
+  const request = useRef(0);
+  const taskRequest = useRef(0);
+  const savingRef = useRef(false);
+  useEffect(() => {
+    load();
+    const timer = setInterval(load, 60000);
+    const listener = AppState.addEventListener('change', state => { if (state === 'active') load(); });
+    return () => { clearInterval(timer); listener.remove(); request.current++; };
+  }, [userId]);
+  useEffect(() => { loadTasks(); return () => { taskRequest.current++; }; }, [selectedDate, userId]);
 
   async function load(){
-    const d=localDate();
-    const [t,m,s,a]=await Promise.all([
-      supabase.from('tasks').select('*,horses(name)').eq('task_date',d).eq('assigned_to',userId).order('created_at'),
-      supabase.from('messages').select('*').eq('active',true).gte('created_at',messageCutoff()).order('created_at',{ascending:false}),
-      supabase.from('feeding_shifts').select('*').eq('shift_date',d).eq('assigned_to',userId).order('shift_time'),
-      supabase.from('horse_assignments').select('*,horses(name)').eq('assignment_date',d).eq('user_id',userId).maybeSingle()
-    ]);
-    setTasks(t.data||[]); setMessages(m.data||[]); setShifts(s.data||[]); setAssignment(a.data||null);
+    const id = ++request.current;
+    const d=localDate(); setToday(d); setBusy(true); setError('');
+    try {
+      const [m,s,a,n,f]=await Promise.all([
+        supabase.from('messages').select('*').eq('stable_id',STABLE_ID).eq('active',true).gte('created_at',messageCutoff()).order('created_at',{ascending:false}),
+        supabase.from('feeding_shifts').select('*').eq('stable_id',STABLE_ID).eq('shift_date',d).eq('assigned_to',userId).order('shift_time'),
+        supabase.from('horse_assignments').select('*,horses(name)').eq('stable_id',STABLE_ID).eq('assignment_date',d).eq('user_id',userId),
+        supabase.from('horse_assignments').select('*,horses(name)').eq('stable_id',STABLE_ID).gt('assignment_date',d).eq('user_id',userId).order('assignment_date').limit(1).maybeSingle(),
+        supabase.from('feeding_shifts').select('*').eq('stable_id',STABLE_ID).eq('assigned_to',userId).or(upcomingShiftFilter(d,timeKey())).order('shift_date').order('shift_time').limit(1).maybeSingle()
+      ]);
+      const failure = [m,s,a,n,f].find(result => result.error);
+      if (failure) throw failure.error;
+      if (id !== request.current) return;
+      setMessages(m.data||[]); setShifts(s.data||[]); setAssignments(a.data||[]);
+      setNextAssignment(n.data); setNextShift(f.data);
+    } catch (e) { if (id === request.current) setError('Kunne ikke oppdatere oversikten. Prøv igjen.'); }
+    finally { if (id === request.current) setBusy(false); }
   }
-  async function toggle(task){ await supabase.from('tasks').update({completed:!task.completed,completed_at:!task.completed?new Date().toISOString():null}).eq('id',task.id); load(); }
+  async function loadTasks() {
+    const id = ++taskRequest.current;
+    setTasks([]);
+    try {
+      const result = await supabase.from('tasks').select('*,horses(name)').eq('stable_id',STABLE_ID).eq('task_date',selectedDate).eq('assigned_to',userId).order('standard_task_key',{nullsFirst:false}).order('created_at');
+      if (result.error) throw result.error;
+      if (id === taskRequest.current) setTasks(result.data || []);
+    } catch (e) { if (id === taskRequest.current) Alert.alert('Kunne ikke hente oppgaver', 'Trykk Oppdater for å prøve igjen.'); }
+  }
+  async function toggle(task){
+    if (savingRef.current) return;
+    savingRef.current = true; setSaving(task.id);
+    try {
+      const {data,error}=await supabase.from('tasks').update({completed:!task.completed,completed_at:!task.completed?new Date().toISOString():null}).eq('stable_id',STABLE_ID).eq('assigned_to',userId).eq('id',task.id).select('id,completed,completed_at').single();
+      if(error) throw error;
+      setTasks(items => items.map(item => item.id === data.id ? {...item,...data} : item));
+    } catch (e) { Alert.alert('Ikke lagret','Avkryssingen kunne ikke lagres. Prøv igjen.'); }
+    finally { savingRef.current = false; setSaving(null); }
+  }
 
   return <>
-    <Section title="Min hest i dag">{assignment ? <View style={styles.horseCard}><Text style={styles.horseName}>🐴 {assignment.horses?.name || 'Hest'}</Text></View> : <Empty text="Ingen hest er fordelt til deg i dag."/>}</Section>
-    <Section title="Mine oppgaver">{tasks.length?tasks.map(x=><Pressable key={x.id} onPress={()=>toggle(x)} style={styles.item}><Text style={x.completed?styles.done:null}>{x.completed?'✓ ':'○ '}{x.title}</Text>{x.horses?.name&&<Text style={styles.muted}>Hest: {x.horses.name}</Text>}</Pressable>):<Empty text="Ingen oppgaver i dag."/>}</Section>
+    <Section title="Min oversikt"><Text style={styles.muted}>{formatDateLong(today)}</Text>{error?<Text accessibilityRole="alert">{error}</Text>:null}<Btn title={busy?'Oppdaterer …':'Oppdater'} disabled={busy} secondary onPress={()=>{load();loadTasks();}}/></Section>
+    <Section title="Min hest i dag">{assignments.length ? assignments.map(a=><Pressable key={a.id} onPress={()=>setSelectedDate(today)} style={styles.horseCard}><Text style={styles.horseName}>🐴 {a.horses?.name || 'Hest'}</Text><Text>Se oppgaver · {formatDate(today)}</Text></Pressable>) : <Empty text="Ingen hest er fordelt til deg i dag."/>}</Section>
+    <Section title="Neste gang jeg har hest">{nextAssignment?<Pressable onPress={()=>setSelectedDate(nextAssignment.assignment_date)} style={styles.horseCard}><Text style={styles.horseName}>🐴 {nextAssignment.horses?.name || 'Hest'}</Text><Text>{formatDateLong(nextAssignment.assignment_date)}</Text><Text style={styles.help}>Trykk for å se oppgavene.</Text></Pressable>:<Empty text="Ingen kommende hestetildeling registrert."/>}</Section>
+    <Section title="Neste fôring">{nextShift?<View style={styles.item}><Text style={styles.bold}>{feedingLabel(nextShift)}</Text><Text>{formatDateLong(nextShift.shift_date)}</Text></View>:<Empty text="Ingen kommende fôringsvakt registrert."/>}</Section>
+    <Section title="Mine oppgaver"><CalendarPicker value={selectedDate} onChange={setSelectedDate}/>{tasks.length?tasks.map(x=><Pressable key={x.id} accessibilityRole="checkbox" accessibilityState={{checked:x.completed,disabled:!!saving}} disabled={!!saving} onPress={()=>toggle(x)} style={styles.item}><Text style={x.completed?styles.done:null}>{x.completed?'✓ ':'○ '}{x.title}</Text>{x.horses?.name&&<Text style={styles.muted}>Hest: {x.horses.name}</Text>}</Pressable>):<Empty text="Ingen oppgaver på valgt dato."/>}</Section>
     <Section title="Beskjeder">{messages.length?messages.map(x=><View key={x.id} style={styles.notice}><Text>{x.text}</Text></View>):<Empty text="Ingen nye beskjeder."/>}</Section>
-    <Section title="Mine fôringer i dag">{shifts.length?shifts.map(x=><View key={x.id} style={styles.item}><Text style={styles.bold}>{x.label}</Text></View>):<Empty text="Ingen fôringsvakter i dag."/>}</Section>
+    <Section title="Mine fôringer i dag">{shifts.length?shifts.map(x=><View key={x.id} style={styles.item}><Text style={styles.bold}>{feedingLabel(x)}</Text></View>):<Empty text="Ingen fôringsvakter i dag."/>}</Section>
   </>;
 }
 
@@ -283,7 +330,7 @@ function AdminScreen({ currentUserId, role }) {
   const [selectedUser,setSelectedUser]=useState(null);
   const [selectedHorse,setSelectedHorse]=useState(null);
   const [taskTitle,setTaskTitle]=useState('');
-  const [taskDate,setTaskDate]=useState(localDate());
+  const [taskDate,setTaskDate]=useState(nextWeekend());
   const [feedDate,setFeedDate]=useState(localDate());
   const [feedUser,setFeedUser]=useState(null);
 
@@ -310,8 +357,9 @@ function AdminScreen({ currentUserId, role }) {
   async function removeHorse(h){const {error}=await supabase.from('horses').update({active:false}).eq('id',h.id);if(error)return Alert.alert('Feil',error.message);if(selectedHorse===h.id)setSelectedHorse(null);load();}
   async function saveHorseAssignment(){
     if(!selectedUser||!selectedHorse)return Alert.alert('Velg fôrrytter og hest');
+    if(!isWeekend(taskDate))return Alert.alert('Velg lørdag eller søndag');
     const {error}=await supabase.from('horse_assignments').upsert({stable_id:STABLE_ID,assignment_date:taskDate,user_id:selectedUser,horse_id:selectedHorse,created_by:currentUserId},{onConflict:'stable_id,assignment_date,user_id'});
-    if(error)Alert.alert('Feil',error.message);else Alert.alert('Lagret',`Hesten er fordelt ${formatDate(taskDate)}.`);
+    if(error)Alert.alert('Feil',error.message);else Alert.alert('Lagret',`Hesten og de fire standardoppgavene er fordelt ${formatDate(taskDate)}.`);
   }
   async function removeHorseAssignment(){
     if(!selectedUser)return Alert.alert('Velg fôrrytter først');
@@ -346,7 +394,10 @@ function AdminScreen({ currentUserId, role }) {
       <Text style={styles.label}>3. Velg lørdag eller søndag</Text><CalendarPicker value={taskDate} onChange={setTaskDate} weekendOnly/>
       <View style={styles.row}><Btn title="Lagre hest til fôrrytter" onPress={saveHorseAssignment}/><Btn title="Fjern hestefordeling" danger onPress={removeHorseAssignment}/></View>
       <View style={styles.divider}/>
-      <Field label="4. Oppgave" value={taskTitle} onChangeText={setTaskTitle} placeholder="f.eks. Møkke boks, fylle vann, pusse"/>
+      <Text style={styles.bold}>Fire faste standardoppgaver</Text>
+      {STANDARD_TASKS.map(title=><Text key={title} style={styles.help}>○ {title}</Text>)}
+      <Text style={styles.help}>Opprettes automatisk når du lagrer hestetildelingen. Hver oppgave kan krysses av individuelt.</Text>
+      <Field label="4. Ekstra oppgave" value={taskTitle} onChangeText={setTaskTitle} placeholder="En ekstra oppgave for valgt hest, rytter og dato"/>
       <Btn title="Legg til oppgave" onPress={addTask}/>
       <Text style={styles.help}>Dato vises som dag.mnd.år. Hestefordeling kan bare velges på lørdag og søndag.</Text>
     </Section>
