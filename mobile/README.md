@@ -1,8 +1,16 @@
-# Fôrrytter App 1.2.0 – testversjon
+# Fôrrytter App 1.3.0 – testversjon
 
 Mobilappen er en React Native/Expo-app med Supabase. App.js er appen som kjøres; index.html i prosjektroten er en eldre, separat demonstrasjon.
 
-## Nytt
+## Nytt i 1.3.0
+
+- Admin skriver trening som fritekst på en enkelt dato eller som standard på en fast avtale. Rytteren ser treningen ved dagens/neste hest og valgt oppgavedato.
+- «Faste fôrrytteravtaler» støtter partallsuker og oddetallsuker, lørdag, søndag eller begge. Ukenummer følger ISO-uken, også uke 53 ved årsskifte. Dette er ikke nødvendigvis samme rytme som hver 14. dag.
+- «Mine faste hestedager» viser rytterens avtaler. Datoene med standardoppgaver opprettes for et rullerende år og fylles daglig av en databasejobb.
+- Enkeltdatoer og avlysninger overstyrer faste avtaler. Endring/avslutning bevarer historiske og påbegynte dager samt ekstraoppgaver.
+- Eksisterende faste avtaler må registreres av admin; ingen avtaler er gjettet ut fra tidligere enkeltdatoer.
+
+## Beholdt fra forrige versjon
 
 - «Min oversikt» viser dagens hest, neste hest med dato og navn, og neste fôring med dato og morgen/kveld. Neste hest søkes uten en begrensning til inneværende uke eller måned.
 - Neste fôring er første registrerte vakt fra nå av. En passert morgenfôring vises fortsatt under dagens fôringer, men er ikke neste vakt.
@@ -20,7 +28,7 @@ npm test
 npm start
 ```
 
-Skann QR-koden med Expo Go. Telefon og PC må være på samme nettverk. Bruk en godkjent stallkonto. Versjonen er 1.2.0; Android versionCode og iOS buildNumber er 3.
+Skann QR-koden med Expo Go. Telefon og PC må være på samme nettverk. Bruk en godkjent stallkonto. Versjonen er 1.3.0; Android versionCode og iOS buildNumber er 4.
 
 Hvis din gamle prosjektmappe har lokale endringer i app.json (ikon/EAS-oppsett), behold dem og bruk en separat prosjektkopi til testing. Ikke overskriv lokale innstillinger ved oppdatering.
 
@@ -78,3 +86,11 @@ Utvikling: `npm run web`. Publiserbar eksport: `npm run build:web`.
 Web har egne bekreftelsesvinduer, inkludert valgene ved bytte og fjerning. Native Android/iOS beholder de opprinnelige systemdialogene. Innloggingsvisningen er kontrollert ved PC-bredde og 390 × 844, inkludert e-post-/telefonvalg og manglende-informasjon-dialoger. Den innloggede nettversjonen må også prøves med en godkjent stallkonto; ingen testinnlogging eller kontodata er lagt inn i appen.
 
 Publisert nettapp: https://forrytter-stall-nordstjerna.expo.app
+
+## Migrasjon og tester for faste avtaler
+
+`supabase/migrations/20260915112216_recurring_horses_and_training.sql` er anvendt. Nye avtaler er beskyttet av RLS: stallmedlemmer kan lese, admin/eier kan lagre. Ingen nye funksjoner hever brukerens rettigheter. Cron-jobben `forrytter-recurring-horse-dates` vedlikeholder kommende datoer daglig.
+
+`supabase/tests/recurring_horses_and_training.sql` tester riktige uketyper og dager, begge helgedager, fire oppgaver, fritekst, bevaring av enkeltdatoer/utførte oppgaver/ekstraoppgaver, avlysning, avslutning og at ryttere ikke kan endre avtaler. Alle testdata rulles tilbake. Begge SQL-testene og de fire datotestene besto, samt web- og iOS-eksport. Innlogget visuell bruk og installasjon på fysisk telefon gjenstår å prøve med stallkontoen.
+
+Admin: Åpne «Faste fôrrytteravtaler», velg rytter, uketype, dager, hest, startdato og trening. Bruk «Hest og trening på en dato» for individuelle endringer. Oppdater Android til versjon 1.3.0 for å få denne visningen og riktig håndtering av avlyste datoer.

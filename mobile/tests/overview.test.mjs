@@ -19,3 +19,13 @@ test('legacy feeding labels remain meaningful and custom labels are preserved', 
   assert.equal(feedingLabel({label:'Fôring',shift_time:'20:00:00'}), 'Kveldsfôring');
   assert.equal(feedingLabel({label:'Ekstra fôring',shift_time:'14:00:00'}), 'Ekstra fôring');
 });
+
+import { isoWeek, weekLabel, agreementLabel } from '../overview.js';
+test('ISO week parity at year boundaries, including adjacent odd weeks 53 and 1',()=>{
+  assert.equal(isoWeek('2027-01-02'),53);
+  assert.equal(isoWeek('2027-01-09'),1);
+  assert.equal(isoWeek('2027-01-16'),2);
+  assert.equal(isoWeek('2026-09-19'),38);
+  assert.equal(weekLabel('2027-01-02'),'Uke 53 · oddetallsuke');
+  assert.equal(agreementLabel({weekday:7,week_parity:0}),'Søndag i partallsuker');
+});
