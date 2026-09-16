@@ -27,7 +27,7 @@ begin
     (extract(isodow from assignment_date)<>6 or mod(extract(week from assignment_date)::int,2)<>0)) then raise exception 'Wrong weekday/parity'; end if;
   if (select horse_id from public.horse_assignments where id=manual)<>h2 then raise exception 'Manual date overwritten'; end if;
   if exists(select 1 from public.horse_assignments a where recurring_id=rule and
-    (select count(*) from public.tasks t where t.assignment_id=a.id)<>4) then raise exception 'Missing standard tasks'; end if;
+    (select count(*) from public.tasks t where t.assignment_id=a.id)<>5) then raise exception 'Missing standard tasks'; end if;
   select id,assignment_date into done_day,date2 from public.horse_assignments where recurring_id=rule order by assignment_date limit 1;
   perform set_config('request.jwt.claim.sub',rider::text,true);
   update public.tasks set completed=true,completed_at=now() where assignment_id=done_day and standard_task_key=1;

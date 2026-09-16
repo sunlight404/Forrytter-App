@@ -386,7 +386,7 @@ function AdminScreen({ currentUserId, role }) {
     if(!selectedUser||!selectedHorse)return Alert.alert('Velg fôrrytter og hest');
     if(!isWeekend(taskDate))return Alert.alert('Velg lørdag eller søndag');
     const {error}=await supabase.from('horse_assignments').upsert({stable_id:STABLE_ID,assignment_date:taskDate,user_id:selectedUser,horse_id:selectedHorse,created_by:currentUserId,training_text:trainingText.trim(),recurring_id:null,is_cancelled:false},{onConflict:'stable_id,assignment_date,user_id'});
-    if(error)Alert.alert('Feil',error.message);else Alert.alert('Lagret',`Hesten og de fire standardoppgavene er fordelt ${formatDate(taskDate)}.`);
+    if(error)Alert.alert('Feil',error.message);else Alert.alert('Lagret',`Hesten og de fem standardoppgavene er fordelt ${formatDate(taskDate)}.`);
   }
   async function removeHorseAssignment(){
     if(!selectedUser)return Alert.alert('Velg fôrrytter først');
@@ -422,7 +422,7 @@ function AdminScreen({ currentUserId, role }) {
       <Text style={styles.label}>3. Velg lørdag eller søndag</Text><CalendarPicker value={taskDate} onChange={setTaskDate} weekendOnly/>
       <Field label="Trening denne dagen" value={trainingText} onChangeText={setTrainingText} multiline maxLength={4000} placeholder="Beskriv hva slags trening hesten skal ha"/><Text style={styles.help}>En lagring her gjelder bare valgt dato og overstyrer eventuell fast avtale.</Text>{!!assignmentError&&<Text style={styles.help}>{assignmentError}</Text>}<View style={styles.row}><Btn title="Lagre hest og trening" disabled={assignmentLoading||assignmentLoadFailed} onPress={saveHorseAssignment}/><Btn title="Fjern hestefordeling" danger onPress={removeHorseAssignment}/></View>
       <View style={styles.divider}/>
-      <Text style={styles.bold}>Fire faste standardoppgaver</Text>
+      <Text style={styles.bold}>Fem faste standardoppgaver</Text>
       {STANDARD_TASKS.map(title=><Text key={title} style={styles.help}>○ {title}</Text>)}
       <Text style={styles.help}>Opprettes automatisk når du lagrer hestetildelingen. Hver oppgave kan krysses av individuelt.</Text>
       <Field label="4. Ekstra oppgave" value={taskTitle} onChangeText={setTaskTitle} placeholder="En ekstra oppgave for valgt hest, rytter og dato"/>

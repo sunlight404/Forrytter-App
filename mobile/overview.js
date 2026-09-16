@@ -1,5 +1,5 @@
 // Dates and times are local stable calendar values, never UTC conversions.
-export const STANDARD_TASKS = ['Møkke ute og inne', 'Fylle vann ute og inne', 'Gjøre i stand kraftfôr', 'Smøre utstyr'];
+export const STANDARD_TASKS = ['Møkke ute og inne', 'Fylle vann ute og inne', 'Gjøre i stand kraftfôr', 'Smøre utstyr', 'Fylling av fôrposer'];
 export const dateKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 export const timeKey = (d = new Date()) => `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
 export function nextWeekend(d = new Date()) {

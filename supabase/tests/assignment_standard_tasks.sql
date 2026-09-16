@@ -16,10 +16,10 @@ begin
   execute 'set local role authenticated';
   insert into public.horse_assignments(stable_id,user_id,horse_id,assignment_date)
     values(stable,rider_id,horse1,'2099-01-03') returning id into assignment;
-  if (select count(*) from public.tasks where assignment_id=assignment) <> 4 then raise exception 'Expected four tasks'; end if;
+  if (select count(*) from public.tasks where assignment_id=assignment) <> 5 then raise exception 'Expected five tasks'; end if;
   insert into public.tasks(stable_id,assigned_to,horse_id,task_date,title)
     values(stable,rider_id,horse1,'2099-01-03','Keep this extra task') returning id into extra;
-  select id into task from public.tasks where assignment_id=assignment and standard_task_key=1;
+  select id into task from public.tasks where assignment_id=assignment and standard_task_key=5;
 
   perform set_config('request.jwt.claim.sub',rider_id::text,true);
   update public.tasks set completed=true,completed_at=now() where id=task;
@@ -44,10 +44,10 @@ begin
   insert into public.horse_assignments(stable_id,user_id,horse_id,assignment_date)
     values(stable,rider_id,horse1,'2099-01-03')
     on conflict(stable_id,assignment_date,user_id) do update set horse_id=excluded.horse_id;
-  if (select count(*) from public.tasks where assignment_id=assignment) <> 4 then raise exception 'Duplicate tasks'; end if;
+  if (select count(*) from public.tasks where assignment_id=assignment) <> 5 then raise exception 'Duplicate tasks'; end if;
   if not (select completed from public.tasks where id=task) then raise exception 'Completion lost on repeated save'; end if;
   update public.horse_assignments set horse_id=horse2 where id=assignment;
-  if (select count(*) from public.tasks where assignment_id=assignment and horse_id=horse2 and not completed) <> 4 then raise exception 'Replacement did not reset tasks'; end if;
+  if (select count(*) from public.tasks where assignment_id=assignment and horse_id=horse2 and not completed) <> 5 then raise exception 'Replacement did not reset tasks'; end if;
   if not exists(select 1 from public.tasks where id=extra and horse_id=horse1) then raise exception 'Extra task altered'; end if;
   delete from public.horse_assignments where id=assignment;
   if exists(select 1 from public.tasks where assignment_id=assignment) then raise exception 'Generated tasks orphaned'; end if;
