@@ -1,4 +1,4 @@
-# Fôrrytter App 1.3.1 – testversjon
+# Fôrrytter App 1.4.0 – testversjon
 
 Mobilappen er en React Native/Expo-app med Supabase. App.js er appen som kjøres; index.html i prosjektroten er en eldre, separat demonstrasjon.
 
@@ -28,7 +28,7 @@ npm test
 npm start
 ```
 
-Skann QR-koden med Expo Go. Telefon og PC må være på samme nettverk. Bruk en godkjent stallkonto. Versjonen er 1.3.1; Android versionCode og iOS buildNumber er 5.
+Skann QR-koden med Expo Go. Telefon og PC må være på samme nettverk. Bruk en godkjent stallkonto. Versjonen er 1.4.0; Android versionCode og iOS buildNumber er 6.
 
 Hvis din gamle prosjektmappe har lokale endringer i app.json (ikon/EAS-oppsett), behold dem og bruk en separat prosjektkopi til testing. Ikke overskriv lokale innstillinger ved oppdatering.
 
@@ -98,3 +98,11 @@ Admin: Åpne «Faste fôrrytteravtaler», velg rytter, uketype, dager, hest, sta
 ## Nytt i 1.3.1
 
 Fylling av fôrposer er femte standardoppgave. Migrasjonen 20260915114256_feed_bag_standard_task.sql utvider oppgavetypene og legger den til på dagens og kommende aktive tildelinger. Historikk, avkryssinger og ekstraoppgaver beholdes. Begge databasetestene besto med fem oppgaver; individuell avkryssing testes på den nye oppgaven.
+
+## Nytt i 1.4.0
+
+Bruker- og hestenavn velges i nedtrekksmenyer. Android har søk i navnelisten; nettleseren bruker en vanlig tastaturtilgjengelig meny. Fôringsbytte viser alle aktive ryttere uten tidligere begrensning til åtte navn.
+
+Admin: Brukere og roller > Velg bruker > Fjern bruker fra stallen. Dette deaktiverer medlemskapet, avslutter faste avtaler, avlyser kommende ikke-påbegynte hestedager, fristiller fremtidige fôringer og avslår uavklarte bytter. Konto, historikk og ekstraoppgaver beholdes. Fordel fristilte vakter i Fôringer uten rytter. Gi tilgang igjen gjenåpner medlemskapet uten å starte gamle avtaler på nytt.
+
+Eier og egen innlogging er beskyttet. Bare eier kan endre administratorers tilgang eller roller. Databasetest med tilbakeføring kontrollerer tilgangstap, historikk, fristilling av vakter, gjenåpning og beskyttelser. Ingen faktiske brukere er fjernet under testingen. Versjon 1.4.0 bruker Android-kode 6.

@@ -2,6 +2,9 @@ import 'react-native-url-polyfill/auto';
 import React, { useEffect, useRef, useState } from 'react';
 import { AppState, Platform, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Alert } from './dialogs';
+import Dropdown from './Dropdown';
+const memberOptions=members=>members.map(m=>({value:m.user_id,label:(m.profiles?.full_name||'Uten navn')+(m.active===false?' (fjernet)':'')})).sort((a,b)=>a.label.localeCompare(b.label,'nb'));
+const horseOptions=horses=>horses.map(h=>({value:h.id,label:h.name})).sort((a,b)=>a.label.localeCompare(b.label,'nb'));
 import { STANDARD_TASKS, nextWeekend, isWeekend, feedingLabel, timeKey, upcomingShiftFilter, weekLabel, agreementLabel } from './overview';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
@@ -110,6 +113,7 @@ export default function App() {
     }
   }
 
+  useEffect(()=>{if(!session?.user)return;const timer=setInterval(loadMembership,60000);const listener=AppState.addEventListener('change',state=>{if(state==='active')loadMembership();});return()=>{clearInterval(timer);listener.remove();};},[session?.user?.id]);
   if (loading) return <Center text="Starter Fôrrytter App …" />;
   if (!session) return <AuthScreen />;
   if (!membership) return <WaitingScreen identifier={session.user.email || session.user.phone || 'Ny bruker'} onRefresh={() => setRefreshKey(x => x + 1)} onLogout={() => supabase.auth.signOut()} />;
@@ -290,6 +294,7 @@ function TodayScreen({ userId }) {
 }
 
 function FeedingScreen({ userId }) {
+  const [swapShift,setSwapShift]=useState(null),[swapUser,setSwapUser]=useState(null);
   const [shifts,setShifts]=useState([]); const [members,setMembers]=useState([]); const [swaps,setSwaps]=useState([]); const [selectedDate,setSelectedDate]=useState(localDate());
   useEffect(()=>{load();},[selectedDate]);
   async function load(){
@@ -301,17 +306,14 @@ function FeedingScreen({ userId }) {
     ]);
     setShifts(s.data||[]); setMembers(m.data||[]); setSwaps(w.data||[]);
   }
-  const nameOf=id=>members.find(m=>m.user_id===id)?.profiles?.full_name||'Bruker';
-  function askSwap(shift){
-    const choices=members.filter(m=>m.user_id!==userId);
-    if(!choices.length)return Alert.alert('Ingen å bytte med','Det finnes ingen andre aktive fôrryttere ennå.');
-    Alert.alert('Bytt fôring','Velg hvem du vil spørre',choices.slice(0,8).map(m=>({text:nameOf(m.user_id),onPress:()=>createSwap(shift,m.user_id)})).concat({text:'Avbryt',style:'cancel'}));
-  }
-  async function createSwap(shift,to){const {error}=await supabase.from('feeding_swap_requests').insert({stable_id:STABLE_ID,shift_id:shift.id,from_user:userId,to_user:to,status:'pending'}); if(error)Alert.alert('Feil',error.message); else load();}
+  const nameOf=id=>id?(members.find(m=>m.user_id===id)?.profiles?.full_name||'Tidligere bruker'):'Ikke fordelt';
+  function askSwap(shift){setSwapShift(shift);setSwapUser(null);}
+  async function createSwap(shift,to){const {error}=await supabase.from('feeding_swap_requests').insert({stable_id:STABLE_ID,shift_id:shift.id,from_user:userId,to_user:to,status:'pending'}); if(error)Alert.alert('Feil',error.message); else{setSwapShift(null);load();}}
   async function respond(id,ok){const {error}=await supabase.from('feeding_swap_requests').update({status:ok?'awaiting_admin':'declined',responded_at:new Date().toISOString()}).eq('id',id); if(error)Alert.alert('Feil',error.message); else load();}
   const dayShifts=shifts.filter(s=>s.shift_date===selectedDate); const marked=[...new Set(shifts.map(s=>s.shift_date))];
   return <>
     <Section title="Fôringskalender"><CalendarPicker value={selectedDate} onChange={setSelectedDate} markedDates={marked}/><Text style={styles.sectionSmall}>{formatDateLong(selectedDate)}</Text>{dayShifts.length?dayShifts.map(s=><View key={s.id} style={styles.itemRow}><View><Text style={styles.bold}>{s.label}</Text><Text style={styles.muted}>{nameOf(s.assigned_to)}</Text></View>{s.assigned_to===userId&&<Btn title="Bytt" secondary onPress={()=>askSwap(s)}/>}</View>):<Empty text="Ingen morgen- eller kveldsfôring registrert denne dagen."/>}</Section>
+    {swapShift&&<Section title="Be om bytte"><Text>{formatDate(swapShift.shift_date)} · {feedingLabel(swapShift)}</Text><Dropdown label="Hvem vil du spørre?" value={swapUser} onChange={setSwapUser} options={memberOptions(members.filter(m=>m.user_id!==userId))}/><View style={styles.row}><Btn title="Send forespørsel" disabled={!swapUser} onPress={()=>createSwap(swapShift,swapUser)}/><Btn title="Avbryt" secondary onPress={()=>setSwapShift(null)}/></View></Section>}
     <Section title="Bytteforespørsler">{swaps.filter(x=>x.from_user===userId||x.to_user===userId).map(x=><View key={x.id} style={styles.item}><Text>{nameOf(x.from_user)} → {nameOf(x.to_user)}</Text><Text style={styles.muted}>{x.status==='pending'?'Venter på mottaker':x.status==='awaiting_admin'?'Venter på admin':x.status==='approved'?'Godkjent':'Avslått'}</Text>{x.to_user===userId&&x.status==='pending'&&<View style={styles.row}><Btn title="Godta" onPress={()=>respond(x.id,true)}/><Btn title="Avslå" danger onPress={()=>respond(x.id,false)}/></View>}</View>)}{!swaps.some(x=>x.from_user===userId||x.to_user===userId)&&<Empty text="Ingen forespørsler."/>}</Section>
   </>;
 }
@@ -334,6 +336,12 @@ function AdminScreen({ currentUserId, role }) {
   const [swaps,setSwaps]=useState([]);
   const [horses,setHorses]=useState([]);
   const [horse,setHorse]=useState('');
+  const [allMembers,setAllMembers]=useState([]);
+  const [managedUser,setManagedUser]=useState(null);
+  const [unassigned,setUnassigned]=useState([]);
+  const [replacements,setReplacements]=useState({});
+  const [memberVersion,setMemberVersion]=useState(0);
+  const [memberBusy,setMemberBusy]=useState(false);
   const [message,setMessage]=useState('');
   const [shiftLabel,setShiftLabel]=useState('Morgenfôring');
   const [selectedUser,setSelectedUser]=useState(null);
@@ -362,16 +370,31 @@ function AdminScreen({ currentUserId, role }) {
 
   useEffect(()=>{load();},[]);
   async function load(){
-    const [r,m,s,h]=await Promise.all([
+    const [r,m,s,h,u]=await Promise.all([
       supabase.from('join_requests').select('*').eq('stable_id',STABLE_ID).eq('status','pending').order('created_at'),
-      supabase.from('memberships').select('user_id,role,profiles(full_name)').eq('stable_id',STABLE_ID).eq('active',true),
+      supabase.from('memberships').select('user_id,role,active,profiles(full_name)').eq('stable_id',STABLE_ID),
       supabase.from('feeding_swap_requests').select('*').eq('stable_id',STABLE_ID).eq('status','awaiting_admin').order('requested_at'),
-      supabase.from('horses').select('*').eq('stable_id',STABLE_ID).eq('active',true).order('name')
+      supabase.from('horses').select('*').eq('stable_id',STABLE_ID).eq('active',true).order('name'),
+      supabase.from('feeding_shifts').select('*').eq('stable_id',STABLE_ID).is('assigned_to',null).gte('shift_date',localDate()).order('shift_date').order('shift_time')
     ]);
-    setRequests(r.data||[]); setMembers(m.data||[]); setSwaps(s.data||[]); setHorses(h.data||[]);
+    setRequests(r.data||[]); setAllMembers(m.data||[]);setMembers((m.data||[]).filter(x=>x.active));setUnassigned(u.data||[]); setSwaps(s.data||[]); setHorses(h.data||[]);
   }
   const nameOf=id=>members.find(m=>m.user_id===id)?.profiles?.full_name||id.slice(0,8);
-  async function approveUser(req){const {error}=await supabase.from('memberships').insert({stable_id:STABLE_ID,user_id:req.user_id,role:'rider',active:true});if(error&&!error.message.includes('duplicate'))return Alert.alert('Feil',error.message);await supabase.from('join_requests').update({status:'approved'}).eq('id',req.id);load();}
+  function confirmMemberAccess(m){
+    Alert.alert(m.active?'Fjern bruker fra stallen':'Gi tilgang igjen',m.active?`Vil du fjerne ${m.profiles?.full_name||'brukeren'}? Faste hesteavtaler avsluttes. Kommende fôringer fristilles og må fordeles på nytt. Historikk og utførte oppgaver beholdes.`:'Brukeren får stalltilgang igjen. Tidligere faste avtaler og vakter må registreres på nytt.',[{text:'Avbryt',style:'cancel'},{text:m.active?'Fjern bruker':'Gi tilgang',style:m.active?'destructive':'default',onPress:()=>changeMemberAccess(m)}]);
+  }
+  async function changeMemberAccess(m){
+    setMemberBusy(true);
+    try{const {error}=await supabase.from('memberships').update({active:!m.active}).eq('stable_id',STABLE_ID).eq('user_id',m.user_id).select('user_id').single();if(error)throw error;
+      setSelectedUser(null);setFeedUser(null);setMemberVersion(v=>v+1);await load();Alert.alert('Lagret',m.active?'Brukeren er fjernet. Kontroller Fôringer uten rytter.':'Brukeren har tilgang igjen.');
+    }catch(e){Alert.alert('Kunne ikke endre tilgang',e.message);}finally{setMemberBusy(false);}
+  }
+  async function reassignFeeding(shift){
+    const person=replacements[shift.id];if(!person)return Alert.alert('Velg ny fôrrytter');
+    const {error}=await supabase.from('feeding_shifts').update({assigned_to:person}).eq('stable_id',STABLE_ID).eq('id',shift.id).is('assigned_to',null).select('id').single();
+    if(error)Alert.alert('Kunne ikke fordele',error.message);else{await load();Alert.alert('Lagret','Fôringen er fordelt.');}
+  }
+  async function approveUser(req){const {error}=await supabase.from('memberships').upsert({stable_id:STABLE_ID,user_id:req.user_id,role:'rider',active:true},{onConflict:'stable_id,user_id'});if(error&&!error.message.includes('duplicate'))return Alert.alert('Feil',error.message);await supabase.from('join_requests').update({status:'approved'}).eq('id',req.id);load();}
   async function declineUser(req){await supabase.from('join_requests').update({status:'declined'}).eq('id',req.id);load();}
   async function setRoleFor(m,next){if(role!=='owner')return Alert.alert('Kun eier','Bare eier kan endre admin-tilgang.');if(m.role==='owner')return;const {error}=await supabase.from('memberships').update({role:next}).eq('stable_id',STABLE_ID).eq('user_id',m.user_id);if(error)Alert.alert('Feil',error.message);else load();}
   async function addHorse(){
@@ -412,12 +435,13 @@ function AdminScreen({ currentUserId, role }) {
   return <>
     <Section title="Nye brukere">{requests.length?requests.map(r=><View key={r.id} style={styles.item}><Text style={styles.bold}>Ny konto · {r.user_id.slice(0,8)}</Text><Text style={styles.muted}>Venter på tilgang</Text><View style={styles.row}><Btn title="Godkjenn" onPress={()=>approveUser(r)}/><Btn title="Avslå" danger onPress={()=>declineUser(r)}/></View></View>):<Empty text="Ingen nye brukere venter."/>}</Section>
 
-    <Section title="Brukere og roller">{members.map(m=><View key={m.user_id} style={styles.item}><Text style={styles.bold}>{m.profiles?.full_name||'Bruker'}</Text><Text style={styles.muted}>{m.role==='owner'?'Eier':m.role==='admin'?'Admin':'Fôrrytter'}</Text>{role==='owner'&&m.user_id!==currentUserId&&m.role!=='owner'&&<View style={styles.row}><Btn title="Fôrrytter" secondary={m.role!=='rider'} onPress={()=>setRoleFor(m,'rider')}/><Btn title="Admin" secondary={m.role!=='admin'} onPress={()=>setRoleFor(m,'admin')}/></View>}</View>)}</Section>
+    <Section title="Brukere og roller"><Dropdown label="Velg bruker" value={managedUser} onChange={setManagedUser} options={memberOptions(allMembers)}/>{allMembers.filter(m=>m.user_id===managedUser).map(m=><View key={m.user_id} style={styles.item}><Text style={styles.bold}>{m.profiles?.full_name||'Bruker'}</Text><Text style={styles.muted}>{m.role==='owner'?'Eier':m.role==='admin'?'Admin':'Fôrrytter'}{!m.active?' · Fjernet fra stallen':''}</Text>{role==='owner'&&m.active&&m.user_id!==currentUserId&&m.role!=='owner'&&<View style={styles.row}><Btn title="Fôrrytter" secondary={m.role!=='rider'} onPress={()=>setRoleFor(m,'rider')}/><Btn title="Admin" secondary={m.role!=='admin'} onPress={()=>setRoleFor(m,'admin')}/></View>}{m.user_id!==currentUserId&&m.role!=='owner'&&(role==='owner'||m.role==='rider')&&<Btn title={m.active?'Fjern bruker fra stallen':'Gi tilgang igjen'} danger={m.active} disabled={memberBusy} onPress={()=>confirmMemberAccess(m)}/>}</View>)}<Text style={styles.help}>Fjerning stenger stalltilgangen. Kontoen og historikken beholdes. Eier kan ikke fjernes her.</Text></Section>
+    <Section title="Fôringer uten rytter">{unassigned.length?unassigned.map(shift=><View key={shift.id} style={styles.item}><Text style={styles.bold}>{formatDate(shift.shift_date)} · {feedingLabel(shift)}</Text><Dropdown label="Ny fôrrytter" value={replacements[shift.id]} onChange={value=>setReplacements(x=>({...x,[shift.id]:value}))} options={memberOptions(members)}/><Btn title="Fordel fôringen" onPress={()=>reassignFeeding(shift)}/></View>):<Empty text="Ingen kommende fôringer mangler rytter."/>}</Section>
 
-    <RecurringAgreementsAdmin members={members} horses={horses} currentUserId={currentUserId}/>
+    <RecurringAgreementsAdmin key={memberVersion} members={members} horses={horses} currentUserId={currentUserId}/>
     <Section title="Hest og trening på en dato">
-      <Text style={styles.label}>1. Velg fôrrytter</Text><View style={styles.choiceWrap}>{members.filter(m=>m.role!=='owner'||m.user_id===currentUserId).map(m=><Choice key={m.user_id} label={m.profiles?.full_name||'Bruker'} selected={selectedUser===m.user_id} onPress={()=>setSelectedUser(m.user_id)}/>)}</View>
-      <Text style={styles.label}>2. Velg hest</Text><View style={styles.choiceWrap}>{horses.map(h=><Choice key={h.id} label={h.name} selected={selectedHorse===h.id} onPress={()=>setSelectedHorse(h.id)}/>)}</View>
+      <Dropdown label="1. Velg fôrrytter" value={selectedUser} onChange={setSelectedUser} options={memberOptions(members)}/>
+      <Dropdown label="2. Velg hest" value={selectedHorse} onChange={setSelectedHorse} options={horseOptions(horses)}/>
       {!horses.length&&<Text style={styles.help}>Legg til hester i seksjonen «Hester» under først.</Text>}
       <Text style={styles.label}>3. Velg lørdag eller søndag</Text><CalendarPicker value={taskDate} onChange={setTaskDate} weekendOnly/>
       <Field label="Trening denne dagen" value={trainingText} onChangeText={setTrainingText} multiline maxLength={4000} placeholder="Beskriv hva slags trening hesten skal ha"/><Text style={styles.help}>En lagring her gjelder bare valgt dato og overstyrer eventuell fast avtale.</Text>{!!assignmentError&&<Text style={styles.help}>{assignmentError}</Text>}<View style={styles.row}><Btn title="Lagre hest og trening" disabled={assignmentLoading||assignmentLoadFailed} onPress={saveHorseAssignment}/><Btn title="Fjern hestefordeling" danger onPress={removeHorseAssignment}/></View>
@@ -436,7 +460,7 @@ function AdminScreen({ currentUserId, role }) {
 
     <Section title="Ny fellesbeskjed"><Field label="Beskjed" value={message} onChangeText={setMessage} multiline/><Btn title="Publiser i 24 timer" onPress={addMessage}/></Section>
 
-    <Section title="Legg inn fôring"><Text style={styles.label}>1. Velg fôrrytter</Text><View style={styles.choiceWrap}>{members.map(m=><Choice key={m.user_id} label={m.profiles?.full_name||'Bruker'} selected={feedUser===m.user_id} onPress={()=>setFeedUser(m.user_id)}/>)}</View><Text style={styles.label}>2. Velg morgen eller kveld</Text><View style={styles.choiceWrap}><Choice label="Morgenfôring" selected={shiftLabel==='Morgenfôring'} onPress={()=>setShiftLabel('Morgenfôring')}/><Choice label="Kveldsfôring" selected={shiftLabel==='Kveldsfôring'} onPress={()=>setShiftLabel('Kveldsfôring')}/></View><Text style={styles.label}>3. Velg dato</Text><CalendarPicker value={feedDate} onChange={setFeedDate}/><Btn title="Legg til fôring" onPress={addShift}/></Section>
+    <Section title="Legg inn fôring"><Dropdown label="1. Velg fôrrytter" value={feedUser} onChange={setFeedUser} options={memberOptions(members)}/><Text style={styles.label}>2. Velg morgen eller kveld</Text><View style={styles.choiceWrap}><Choice label="Morgenfôring" selected={shiftLabel==='Morgenfôring'} onPress={()=>setShiftLabel('Morgenfôring')}/><Choice label="Kveldsfôring" selected={shiftLabel==='Kveldsfôring'} onPress={()=>setShiftLabel('Kveldsfôring')}/></View><Text style={styles.label}>3. Velg dato</Text><CalendarPicker value={feedDate} onChange={setFeedDate}/><Btn title="Legg til fôring" onPress={addShift}/></Section>
   </>;
 }
 
@@ -516,11 +540,11 @@ function RecurringAgreementsAdmin({members,horses,currentUserId}) {
     {!rules.length&&!error&&<Empty text="Ingen faste avtaler registrert ennå."/>}
     <View style={styles.divider}/>
     {editing?<><Text style={styles.bold}>Redigerer {nameOf(user)} · {agreementLabel({weekday:days[0],week_parity:parity})}</Text><Btn title="Ny fast avtale" secondary onPress={reset}/></>:<>
-      <Text style={styles.label}>Fôrrytter</Text><View style={styles.choiceWrap}>{members.map(m=><Choice key={m.user_id} label={m.profiles?.full_name||'Fôrrytter'} selected={user===m.user_id} onPress={()=>setUser(m.user_id)}/>)}</View>
+      <Dropdown label="Fôrrytter" value={user} onChange={setUser} options={memberOptions(members)}/>
       <Text style={styles.label}>Uker</Text><View style={styles.choiceWrap}><Choice label="Partallsuker" selected={parity===0} onPress={()=>setParity(0)}/><Choice label="Oddetallsuker" selected={parity===1} onPress={()=>setParity(1)}/></View>
       <Text style={styles.label}>Dager – velg én eller begge</Text><View style={styles.choiceWrap}>{[6,7].map(day=><Choice key={day} label={day===6?'Lørdag':'Søndag'} selected={days.includes(day)} onPress={()=>setDays(values=>values.includes(day)?values.filter(d=>d!==day):[...values,day])}/>)}</View>
     </>}
-    <Text style={styles.label}>Hest</Text><View style={styles.choiceWrap}>{horses.map(h=><Choice key={h.id} label={h.name} selected={horse===h.id} onPress={()=>setHorse(h.id)}/>)}</View>
+    <Dropdown label="Hest" value={horse} onChange={setHorse} options={horseOptions(horses)}/>
     <Text style={styles.label}>Avtalen gjelder fra</Text><CalendarPicker value={start} onChange={setStart}/>
     <Field label="Trening på faste hestedager" value={training} onChangeText={setTraining} multiline maxLength={4000} placeholder="Admin beskriver treningen her"/>
     <Btn title={busy?'Lagrer …':'Lagre fast avtale'} disabled={busy} onPress={save}/>
