@@ -1,4 +1,4 @@
-# Fôrrytter App 1.4.0 – testversjon
+# Fôrrytter App 1.5.0 – testversjon
 
 Mobilappen er en React Native/Expo-app med Supabase. App.js er appen som kjøres; index.html i prosjektroten er en eldre, separat demonstrasjon.
 
@@ -28,7 +28,7 @@ npm test
 npm start
 ```
 
-Skann QR-koden med Expo Go. Telefon og PC må være på samme nettverk. Bruk en godkjent stallkonto. Versjonen er 1.4.0; Android versionCode og iOS buildNumber er 6.
+Skann QR-koden med Expo Go. Telefon og PC må være på samme nettverk. Bruk en godkjent stallkonto. Versjonen er 1.5.0; Android versionCode og iOS buildNumber er 7.
 
 Hvis din gamle prosjektmappe har lokale endringer i app.json (ikon/EAS-oppsett), behold dem og bruk en separat prosjektkopi til testing. Ikke overskriv lokale innstillinger ved oppdatering.
 
@@ -106,3 +106,11 @@ Bruker- og hestenavn velges i nedtrekksmenyer. Android har søk i navnelisten; n
 Admin: Brukere og roller > Velg bruker > Fjern bruker fra stallen. Dette deaktiverer medlemskapet, avslutter faste avtaler, avlyser kommende ikke-påbegynte hestedager, fristiller fremtidige fôringer og avslår uavklarte bytter. Konto, historikk og ekstraoppgaver beholdes. Fordel fristilte vakter i Fôringer uten rytter. Gi tilgang igjen gjenåpner medlemskapet uten å starte gamle avtaler på nytt.
 
 Eier og egen innlogging er beskyttet. Bare eier kan endre administratorers tilgang eller roller. Databasetest med tilbakeføring kontrollerer tilgangstap, historikk, fristilling av vakter, gjenåpning og beskyttelser. Ingen faktiske brukere er fjernet under testingen. Versjon 1.4.0 bruker Android-kode 6.
+
+## Nytt i 1.5.0
+
+Fanen Bytt hest lar rytteren velge egen hestedato, mottaker og mottakerens hestedato. Samme dato bytter hester; ulike datoer bytter de to hestedagene. Mottaker må godta før admin kan godkjenne. Admin behandler hestebytter i samme fane. Sender kan trekke forespørselen tilbake, og mottaker kan trekke en godkjenning tilbake frem til admin har godkjent.
+
+Godkjenningen skjer samlet i databasen med kontroll av tilganger, opprinnelige hester/datoer/trening, fullførte oppgaver og datokollisjoner. Trening og ekstraoppgaver følger hesten/datoen. Fem standardoppgaver opprettes per ny tildeling. Faste avtaler beholdes, og de opprinnelige datoene blokkeres fra automatisk gjenoppretting ved et bytte mellom datoer. Hvis avtalen er endret siden forespørselen, må den avslås og sendes på nytt.
+
+Migrasjonen 20260916071512_horse_swap_requests.sql er anvendt. supabase/tests/horse_swap_requests.sql tester begge byttetyper, godkjenningsrekkefølge, uendret tildeling før godkjenning, ekstraoppgaver, standardoppgaver, faste avtaler, duplikater, gjentatt godkjenning, endret trening, utførte oppgaver og fjerning av bruker. Alle testdata rulles tilbake. Versjon 1.5.0 bruker Android-kode 7.

@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { AppState, Platform, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Alert } from './dialogs';
 import Dropdown from './Dropdown';
+import HorseSwaps from './HorseSwaps';
 const memberOptions=members=>members.map(m=>({value:m.user_id,label:(m.profiles?.full_name||'Uten navn')+(m.active===false?' (fjernet)':'')})).sort((a,b)=>a.label.localeCompare(b.label,'nb'));
 const horseOptions=horses=>horses.map(h=>({value:h.id,label:h.name})).sort((a,b)=>a.label.localeCompare(b.label,'nb'));
 import { STANDARD_TASKS, nextWeekend, isWeekend, feedingLabel, timeKey, upcomingShiftFilter, weekLabel, agreementLabel } from './overview';
@@ -119,7 +120,7 @@ export default function App() {
   if (!membership) return <WaitingScreen identifier={session.user.email || session.user.phone || 'Ny bruker'} onRefresh={() => setRefreshKey(x => x + 1)} onLogout={() => supabase.auth.signOut()} />;
 
   const isAdmin = membership.role === 'owner' || membership.role === 'admin';
-  const tabs = isAdmin ? ['today','feeding','messages','admin'] : ['today','feeding','messages'];
+  const tabs = isAdmin ? ['today','horseSwaps','feeding','messages','admin'] : ['today','horseSwaps','feeding','messages'];
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -130,12 +131,13 @@ export default function App() {
       </View>
       <ScrollView contentContainerStyle={styles.content}>
         {tab === 'today' && <TodayScreen userId={session.user.id} />}
+        {tab === 'horseSwaps' && <HorseSwaps supabase={supabase} stableId={STABLE_ID} userId={session.user.id} isAdmin={isAdmin}/>}
         {tab === 'feeding' && <FeedingScreen userId={session.user.id} />}
         {tab === 'messages' && <MessagesScreen isAdmin={isAdmin} />}
         {tab === 'admin' && isAdmin && <AdminScreen currentUserId={session.user.id} role={membership.role} />}
       </ScrollView>
       <View style={styles.nav}>
-        {tabs.map(t => <Pressable key={t} onPress={() => setTab(t)} style={[styles.navBtn, tab===t && styles.navActive]}><Text style={styles.navText}>{({today:'Min oversikt',feeding:'Fôring',messages:'Beskjeder',admin:'Admin'})[t]}</Text></Pressable>)}
+        {tabs.map(t => <Pressable key={t} onPress={() => setTab(t)} style={[styles.navBtn, tab===t && styles.navActive]}><Text style={styles.navText}>{({today:'Min oversikt',horseSwaps:'Bytt hest',feeding:'Fôring',messages:'Beskjeder',admin:'Admin'})[t]}</Text></Pressable>)}
       </View>
     </SafeAreaView>
   );
