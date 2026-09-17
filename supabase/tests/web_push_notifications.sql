@@ -1,0 +1,41 @@
+begin;
+do $$
+declare owner_id uuid;rider uuid;stable uuid;horse uuid;a uuid;b uuid;swap uuid;d date;job uuid;
+begin
+ select id into owner_id from public.profiles order by id limit 1;
+ select id into rider from public.profiles where id<>owner_id order by id limit 1;
+ if rider is null then raise exception 'Two profiles required';end if;
+ insert into public.stables(name) values('Rollback push test') returning id into stable;
+ insert into public.memberships(stable_id,user_id,role) values(stable,owner_id,'owner'),(stable,rider,'rider');
+ insert into public.horses(stable_id,name) values(stable,'Test horse') returning id into horse;
+ insert into public.push_subscriptions(user_id,stable_id,endpoint,subscription) values(owner_id,stable,'https://example.invalid/rollback-owner','{}'),(rider,stable,'https://example.invalid/rollback-rider','{}');
+ d:=date_trunc('week',current_date+14)::date+5;
+ perform set_config('request.jwt.claim.sub',owner_id::text,true);
+ insert into public.horse_assignments(stable_id,user_id,horse_id,assignment_date) values(stable,rider,horse,d) returning id into a;
+ insert into public.horse_assignments(stable_id,user_id,horse_id,assignment_date) values(stable,rider,horse,d+1);
+ insert into public.horse_assignments(stable_id,user_id,horse_id,assignment_date) values(stable,owner_id,horse,d+7) returning id into b;
+ insert into public.messages(stable_id,text,created_by) values(stable,'Test message',owner_id);
+ insert into public.feeding_shifts(stable_id,shift_date,shift_time,label,assigned_to,created_by) values(stable,d,time '08:00','Morgenfôring',rider,owner_id);
+ if (select count(*) from private.push_outbox where stable_id=stable and user_id=rider and status='pending')<>3 then raise exception 'Expected horse, feeding, message topics with horse coalescing';end if;
+ if exists(select 1 from private.push_outbox where stable_id=stable and user_id=owner_id) then raise exception 'Actor received own event';end if;
+ perform set_config('request.jwt.claim.sub',rider::text,true);execute 'set local role authenticated';
+ if (select count(*) from public.push_subscriptions where stable_id=stable)<>1 then raise exception 'Subscription RLS leaked another member';end if;
+ begin perform public.push_runtime_get();raise exception 'Runtime secrets exposed' using errcode='XX000';exception when insufficient_privilege then null;end;
+ begin perform public.push_claim();raise exception 'Outbox exposed' using errcode='XX000';exception when insufficient_privilege then null;end;
+ insert into public.horse_swap_requests(stable_id,from_user,to_user,from_assignment_id,to_assignment_id) values(stable,rider,owner_id,a,b) returning id into swap;
+ execute 'reset role';
+ if not exists(select 1 from private.push_outbox where stable_id=stable and user_id=owner_id and topic='horse_swap_requests') then raise exception 'Missing swap request alert';end if;
+ perform set_config('request.jwt.claim.sub',owner_id::text,true);execute 'set local role authenticated';
+ update public.horse_swap_requests set status='awaiting_admin' where id=swap;
+ update public.horse_swap_requests set status='approved' where id=swap;
+ execute 'reset role';
+ if not exists(select 1 from private.push_outbox where stable_id=stable and user_id=rider and topic='horse_swap_requests') then raise exception 'Missing swap response alert';end if;
+ update public.memberships set active=false where stable_id=stable and user_id=rider;
+ if exists(select 1 from public.push_subscriptions where stable_id=stable and user_id=rider) or exists(select 1 from private.push_outbox where stable_id=stable and user_id=rider and status in('pending','processing')) then raise exception 'Departed member still subscribed';end if;
+ execute 'set local role service_role';
+ perform public.push_test(stable,owner_id);
+ -- Claim only this transaction's jobs via a separate scoped check; claim RPC permission is checked here.
+ if not has_function_privilege('service_role','public.push_claim(integer)','execute') then raise exception 'Worker cannot claim';end if;
+ execute 'reset role';
+end $$;
+rollback;

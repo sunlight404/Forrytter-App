@@ -11,3 +11,20 @@ self.addEventListener('fetch', event => {
     event.respondWith(fetch(event.request).catch(() => caches.match('/offline.html')));
   }
 });
+
+self.addEventListener('push',event=>{
+ let data={};try{data=event.data?.json()||{};}catch{}
+ event.waitUntil(self.registration.showNotification(data.title||'Fôrrytter App',{
+  body:data.body||'Åpne appen for å se oppdateringen.',icon:'/icon-192.png',
+  tag:data.id||'forrytter-update',data:{url:data.url||'/'},
+ }));
+});
+self.addEventListener('notificationclick',event=>{
+ event.notification.close();
+ let url=new URL('/',self.location.origin);
+ try{const candidate=new URL(event.notification.data?.url||'/',self.location.origin);if(candidate.origin===self.location.origin)url=candidate;}catch{}
+ event.waitUntil(self.clients.matchAll({type:'window',includeUncontrolled:true}).then(async clients=>{
+  for(const client of clients){if(new URL(client.url).origin===url.origin){await client.navigate(url.href);return client.focus();}}
+  return self.clients.openWindow(url.href);
+ }));
+});

@@ -4,6 +4,7 @@ import { AppState, Platform, Pressable, SafeAreaView, ScrollView, StatusBar, Sty
 import { Alert } from './dialogs';
 import Dropdown from './Dropdown';
 import HorseSwaps from './HorseSwaps';
+import Notifications, { disableDeviceNotifications } from './Notifications';
 const memberOptions=members=>members.map(m=>({value:m.user_id,label:(m.profiles?.full_name||'Uten navn')+(m.active===false?' (fjernet)':'')})).sort((a,b)=>a.label.localeCompare(b.label,'nb'));
 const horseOptions=horses=>horses.map(h=>({value:h.id,label:h.name})).sort((a,b)=>a.label.localeCompare(b.label,'nb'));
 import { STANDARD_TASKS, nextWeekend, isWeekend, feedingLabel, timeKey, upcomingShiftFilter, weekLabel, agreementLabel } from './overview';
@@ -92,7 +93,7 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [membership, setMembership] = useState(null);
-  const [tab, setTab] = useState('today');
+  const [tab, setTab] = useState(() => { const value=Platform.OS==='web'&&typeof window!=='undefined'&&window.location?new URLSearchParams(window.location.search).get('tab'):null; return ['today','horseSwaps','feeding','messages'].includes(value)?value:'today'; });
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
@@ -117,7 +118,7 @@ export default function App() {
   useEffect(()=>{if(!session?.user)return;const timer=setInterval(loadMembership,60000);const listener=AppState.addEventListener('change',state=>{if(state==='active')loadMembership();});return()=>{clearInterval(timer);listener.remove();};},[session?.user?.id]);
   if (loading) return <Center text="Starter Fôrrytter App …" />;
   if (!session) return <AuthScreen />;
-  if (!membership) return <WaitingScreen identifier={session.user.email || session.user.phone || 'Ny bruker'} onRefresh={() => setRefreshKey(x => x + 1)} onLogout={() => supabase.auth.signOut()} />;
+  if (!membership) return <WaitingScreen identifier={session.user.email || session.user.phone || 'Ny bruker'} onRefresh={() => setRefreshKey(x => x + 1)} onLogout={async () => { try { await disableDeviceNotifications(supabase); } catch { Alert.alert('Varsler', 'Varsler kunne ikke slås av. Slå dem av i enhetens innstillinger hvis andre skal bruke enheten.'); } await supabase.auth.signOut(); }} />;
 
   const isAdmin = membership.role === 'owner' || membership.role === 'admin';
   const tabs = isAdmin ? ['today','horseSwaps','feeding','messages','admin'] : ['today','horseSwaps','feeding','messages'];
@@ -127,7 +128,7 @@ export default function App() {
       <StatusBar barStyle="dark-content" />
       <View style={styles.header}>
         <View><Text style={styles.title}>Fôrrytter App</Text><Text style={styles.muted}>Stall Nordstjerna · {membership.role === 'owner' ? 'Eier' : membership.role === 'admin' ? 'Admin' : 'Fôrrytter'}</Text></View>
-        <Btn title="Logg ut" secondary onPress={() => supabase.auth.signOut()} />
+        <Btn title="Logg ut" secondary onPress={async () => { try { await disableDeviceNotifications(supabase); } catch { Alert.alert('Varsler', 'Varsler kunne ikke slås av. Slå dem av i enhetens innstillinger hvis andre skal bruke enheten.'); } await supabase.auth.signOut(); }} />
       </View>
       <ScrollView contentContainerStyle={styles.content}>
         {tab === 'today' && <TodayScreen userId={session.user.id} />}
@@ -286,6 +287,7 @@ function TodayScreen({ userId }) {
   return <>
     <Section title="Min oversikt"><Text style={styles.muted}>{formatDateLong(today)} · {weekLabel(today)}</Text>{error?<Text accessibilityRole="alert">{error}</Text>:null}<Btn title={busy?'Oppdaterer …':'Oppdater'} disabled={busy} secondary onPress={()=>{load();loadTasks();}}/></Section>
     <Section title="Mine faste hestedager">{agreements.length?agreements.map(r=><View key={r.id} style={styles.item}><Text style={styles.bold}>{r.horses?.name} · {agreementLabel(r)}</Text><Text style={styles.muted}>Fra {formatDate(r.start_date)}</Text><TrainingText text={r.training_text}/></View>):<Empty text="Ingen fast avtale registrert. Admin kan legge inn partalls- og oddetallsuker."/>}</Section>
+    <Notifications supabase={supabase} stableId={STABLE_ID} userId={userId}/>
     <Section title="Min hest i dag">{assignments.length ? assignments.map(a=><Pressable key={a.id} onPress={()=>setSelectedDate(today)} style={styles.horseCard}><Text style={styles.horseName}>🐴 {a.horses?.name || 'Hest'}</Text><Text>Se oppgaver · {formatDate(today)}</Text><TrainingText text={a.training_text}/></Pressable>) : <Empty text="Ingen hest er fordelt til deg i dag."/>}</Section>
     <Section title="Neste gang jeg har hest">{nextAssignment?<Pressable onPress={()=>setSelectedDate(nextAssignment.assignment_date)} style={styles.horseCard}><Text style={styles.horseName}>🐴 {nextAssignment.horses?.name || 'Hest'}</Text><Text>{formatDateLong(nextAssignment.assignment_date)} · {weekLabel(nextAssignment.assignment_date)}</Text><Text style={styles.muted}>{nextAssignment.recurring_id?'Fast avtale':'Avtale for denne datoen'}</Text><TrainingText text={nextAssignment.training_text}/><Text style={styles.help}>Trykk for å se oppgavene.</Text></Pressable>:<Empty text="Ingen kommende hestetildeling registrert."/>}</Section>
     <Section title="Neste fôring">{nextShift?<View style={styles.item}><Text style={styles.bold}>{feedingLabel(nextShift)}</Text><Text>{formatDateLong(nextShift.shift_date)}</Text></View>:<Empty text="Ingen kommende fôringsvakt registrert."/>}</Section>
@@ -374,7 +376,7 @@ function AdminScreen({ currentUserId, role }) {
   async function load(){
     const [r,m,s,h,u]=await Promise.all([
       supabase.from('join_requests').select('*').eq('stable_id',STABLE_ID).eq('status','pending').order('created_at'),
-      supabase.from('memberships').select('user_id,role,active,profiles(full_name)').eq('stable_id',STABLE_ID),
+      supabase.from('memberships').select('user_id,role,active,profiles(full_name)').eq('stable_id',STABLE_ID).eq('archived',false),
       supabase.from('feeding_swap_requests').select('*').eq('stable_id',STABLE_ID).eq('status','awaiting_admin').order('requested_at'),
       supabase.from('horses').select('*').eq('stable_id',STABLE_ID).eq('active',true).order('name'),
       supabase.from('feeding_shifts').select('*').eq('stable_id',STABLE_ID).is('assigned_to',null).gte('shift_date',localDate()).order('shift_date').order('shift_time')
