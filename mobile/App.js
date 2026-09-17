@@ -3,6 +3,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { AppState, Platform, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Alert } from './dialogs';
 import Dropdown from './Dropdown';
+import PasswordRecovery from './PasswordRecovery';
+import { authOptions } from './authOptions';
 import HorseSwaps from './HorseSwaps';
 import Notifications, { disableDeviceNotifications } from './Notifications';
 const memberOptions=members=>members.map(m=>({value:m.user_id,label:(m.profiles?.full_name||'Uten navn')+(m.active===false?' (fjernet)':'')})).sort((a,b)=>a.label.localeCompare(b.label,'nb'));
@@ -15,7 +17,7 @@ const SUPABASE_URL = 'https://cffaswmpbllyqrnikelf.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_P7zccZ0hlS7KfTvQLgcjYQ_uxQkF1hM';
 const STABLE_ID = '67d21b8e-a592-479a-b7c6-2157055e6c03';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
-  auth: { storage: AsyncStorage, autoRefreshToken: true, persistSession: true, detectSessionInUrl: false },
+  auth: authOptions(AsyncStorage, Platform.OS === 'web'),
 });
 
 const localDate = () => {
@@ -93,31 +95,52 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [membership, setMembership] = useState(null);
+  const [membershipLoading,setMembershipLoading]=useState(true),[membershipError,setMembershipError]=useState('');
+  const membershipRequest=useRef(0),sessionUser=useRef(null);
+  const [authError,setAuthError]=useState('');
+  const [recovering,setRecovering]=useState(()=>{if(Platform.OS!=='web')return false;try{return new URLSearchParams(window.location.hash.slice(1)).get('type')==='recovery'||!!new URLSearchParams(window.location.hash.slice(1)).get('error')||window.sessionStorage.getItem('forrytter-password-recovery')==='1';}catch{return false;}});
+  function finishRecovery(){setRecovering(false);if(Platform.OS==='web'){try{window.sessionStorage.removeItem('forrytter-password-recovery');window.history.replaceState(null,'',window.location.pathname+window.location.search);}catch{}}}
   const [tab, setTab] = useState(() => { const value=Platform.OS==='web'&&typeof window!=='undefined'&&window.location?new URLSearchParams(window.location.search).get('tab'):null; return ['today','horseSwaps','feeding','messages'].includes(value)?value:'today'; });
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => { setSession(data.session); setLoading(false); });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => setSession(next));
-    return () => sub.subscription.unsubscribe();
+    let live=true;
+    const {data:sub}=supabase.auth.onAuthStateChange((event,next)=>{
+      if(!live)return;
+      if(sessionUser.current!==(next?.user?.id||null)){sessionUser.current=next?.user?.id||null;membershipRequest.current++;setMembership(null);setMembershipError('');setMembershipLoading(!!next);}
+      setSession(next);
+      if(event==='PASSWORD_RECOVERY'){setRecovering(true);if(Platform.OS==='web'){try{window.sessionStorage.setItem('forrytter-password-recovery','1');}catch{}}}
+    });
+    supabase.auth.getSession().then(({data,error})=>{if(!live)return;if(error)setAuthError('Kunne ikke hente innloggingen. Kontroller nettforbindelsen og prøv igjen.');else setSession(data.session);setLoading(false);}).catch(()=>{if(live){setAuthError('Kunne ikke hente innloggingen. Prøv å åpne appen igjen.');setLoading(false);}});
+    const listener=AppState.addEventListener('change',state=>{if(state==='active')supabase.auth.startAutoRefresh();else if(Platform.OS!=='web')supabase.auth.stopAutoRefresh();});
+    if(Platform.OS!=='web'&&AppState.currentState==='active')supabase.auth.startAutoRefresh();
+    return()=>{live=false;sub.subscription.unsubscribe();listener.remove();};
   }, []);
 
   useEffect(() => {
-    if (!session?.user) { setMembership(null); return; }
+    if (!session?.user) { membershipRequest.current++;setMembership(null);setMembershipLoading(false); return; }
     loadMembership();
   }, [session, refreshKey]);
 
   async function loadMembership() {
-    const { data } = await supabase.from('memberships').select('*').eq('user_id', session.user.id).eq('stable_id', STABLE_ID).eq('active', true).maybeSingle();
-    setMembership(data || null);
-    if (!data) {
-      await supabase.from('join_requests').upsert({ stable_id: STABLE_ID, user_id: session.user.id, status: 'pending' }, { onConflict: 'stable_id,user_id', ignoreDuplicates: true });
-    }
+    if(!session?.user)return;
+    const id=++membershipRequest.current;setMembershipLoading(true);
+    try{
+      const {data,error}=await supabase.from('memberships').select('*').eq('user_id',session.user.id).eq('stable_id',STABLE_ID).eq('active',true).maybeSingle();
+      if(error)throw error;if(id!==membershipRequest.current)return;
+      setMembership(data||null);setMembershipError('');
+      if(!data)await supabase.from('join_requests').upsert({stable_id:STABLE_ID,user_id:session.user.id,status:'pending'},{onConflict:'stable_id,user_id',ignoreDuplicates:true});
+    }catch{if(id===membershipRequest.current)setMembershipError('Kunne ikke hente stalltilgangen. Du er fortsatt logget inn. Prøv igjen når du har nett.');}
+    finally{if(id===membershipRequest.current)setMembershipLoading(false);}
   }
 
   useEffect(()=>{if(!session?.user)return;const timer=setInterval(loadMembership,60000);const listener=AppState.addEventListener('change',state=>{if(state==='active')loadMembership();});return()=>{clearInterval(timer);listener.remove();};},[session?.user?.id]);
   if (loading) return <Center text="Starter Fôrrytter App …" />;
+  if(recovering)return <PasswordRecovery supabase={supabase} session={session} reset onClose={finishRecovery}/>;
+  if(authError&&!session)return <SafeAreaView style={styles.safe}><View style={styles.centerBox}><Text>{authError}</Text><Btn title="Prøv igjen" onPress={async()=>{const {data,error}=await supabase.auth.getSession();if(!error){setSession(data.session);setAuthError('');}}}/></View></SafeAreaView>;
   if (!session) return <AuthScreen />;
+  if(!membership&&membershipLoading)return <Center text="Henter din oversikt …"/>;
+  if(!membership&&membershipError)return <SafeAreaView style={styles.safe}><View style={styles.centerBox}><Text>{membershipError}</Text><Btn title="Prøv igjen" onPress={loadMembership}/></View></SafeAreaView>;
   if (!membership) return <WaitingScreen identifier={session.user.email || session.user.phone || 'Ny bruker'} onRefresh={() => setRefreshKey(x => x + 1)} onLogout={async () => { try { await disableDeviceNotifications(supabase); } catch { Alert.alert('Varsler', 'Varsler kunne ikke slås av. Slå dem av i enhetens innstillinger hvis andre skal bruke enheten.'); } await supabase.auth.signOut(); }} />;
 
   const isAdmin = membership.role === 'owner' || membership.role === 'admin';
@@ -131,6 +154,7 @@ export default function App() {
         <Btn title="Logg ut" secondary onPress={async () => { try { await disableDeviceNotifications(supabase); } catch { Alert.alert('Varsler', 'Varsler kunne ikke slås av. Slå dem av i enhetens innstillinger hvis andre skal bruke enheten.'); } await supabase.auth.signOut(); }} />
       </View>
       <ScrollView contentContainerStyle={styles.content}>
+        {!!membershipError&&<Text accessibilityRole="alert">{membershipError}</Text>}
         {tab === 'today' && <TodayScreen userId={session.user.id} />}
         {tab === 'horseSwaps' && <HorseSwaps supabase={supabase} stableId={STABLE_ID} userId={session.user.id} isAdmin={isAdmin}/>}
         {tab === 'feeding' && <FeedingScreen userId={session.user.id} />}
@@ -145,6 +169,7 @@ export default function App() {
 }
 
 function AuthScreen() {
+  const [forgot,setForgot]=useState(false);
   const [mode, setMode] = useState('login');
   const [method, setMethod] = useState('email');
   const [name, setName] = useState('');
@@ -189,6 +214,7 @@ function AuthScreen() {
     if (error) return Alert.alert('Feil kode', error.message);
   }
 
+  if(forgot)return <PasswordRecovery supabase={supabase} onClose={()=>setForgot(false)}/>;
   return <SafeAreaView style={styles.safe}><ScrollView contentContainerStyle={styles.authWrap}><Text style={styles.logo}>🐴</Text><Text style={styles.bigTitle}>Fôrrytter App</Text><Text style={styles.centerMuted}>Stall Nordstjerna</Text><View style={styles.card}>
     <View style={styles.segment}><Btn title="Logg inn" onPress={() => {setMode('login');setSmsSent(false);}} secondary={mode!=='login'} /><Btn title="Ny bruker" onPress={() => {setMode('signup');setSmsSent(false);}} secondary={mode!=='signup'} /></View>
     <Text style={styles.label}>Velg innlogging</Text>
@@ -198,6 +224,7 @@ function AuthScreen() {
       <Field label="E-post" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
       <Field label="Passord" value={password} onChangeText={setPassword} secureTextEntry />
       <Btn title={busy ? 'Vent …' : mode==='login' ? 'Logg inn' : 'Opprett bruker'} onPress={submitEmail} disabled={busy} />
+      {mode==='login'&&<><Text style={styles.help}>Innloggingen huskes på denne enheten.</Text><View style={{marginTop:12}}><Btn title="Glemt passord?" secondary onPress={()=>setForgot(true)}/></View></>}
     </> : <>
       <Field label="Telefonnummer" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="f.eks. 99 99 99 99" />
       {!smsSent ? <Btn title={busy ? 'Sender …' : 'Send kode på SMS'} onPress={sendSms} disabled={busy} /> : <>
@@ -215,24 +242,62 @@ function WaitingScreen({ identifier, onRefresh, onLogout }) {
   return <SafeAreaView style={styles.safe}><View style={styles.centerBox}><Text style={styles.logo}>🐴</Text><Text style={styles.bigTitle}>Venter på godkjenning</Text><Text style={styles.centerMuted}>{identifier}</Text><Text style={styles.helpCenter}>Kontoen er opprettet, men har ikke tilgang til Stall Nordstjerna ennå. Eier eller admin må godkjenne den.</Text><Btn title="Sjekk på nytt" onPress={onRefresh} /><Btn title="Logg ut" secondary onPress={onLogout} /></View></SafeAreaView>;
 }
 
+function HorseDayTasks({userId,selectedDate,showHorse=false}) {
+  const [tasks,setTasks]=useState([]),[dayAssignment,setDayAssignment]=useState(null);
+  const [saving,setSaving]=useState(null),[error,setError]=useState(''),[loading,setLoading]=useState(true);
+  const taskRequest=useRef(0),savingRef=useRef(false);
+  useEffect(()=>{
+    loadTasks();
+    const refresh=()=>loadTasks(true);
+    const timer=setInterval(refresh,30000);
+    const listener=AppState.addEventListener('change',state=>{if(state==='active')refresh();});
+    if(Platform.OS==='web')window.addEventListener('focus',refresh);
+    return()=>{clearInterval(timer);listener.remove();if(Platform.OS==='web')window.removeEventListener('focus',refresh);taskRequest.current++;};
+  },[selectedDate,userId]);
+  async function loadTasks(background = false) {
+    if(savingRef.current)return;
+    const id = ++taskRequest.current;
+    setError(''); if(!background)setLoading(true);
+    if (!background) { setTasks([]); setDayAssignment(null); }
+    try {
+      const [result,day] = await Promise.all([
+        supabase.from('tasks').select('*,horses(name)').eq('stable_id',STABLE_ID).eq('task_date',selectedDate).eq('assigned_to',userId).order('standard_task_key',{nullsFirst:false}).order('created_at'),
+        supabase.from('horse_assignments').select('*,horses(name)').eq('stable_id',STABLE_ID).eq('user_id',userId).eq('assignment_date',selectedDate).eq('is_cancelled',false).maybeSingle()
+      ]);
+      if(day.error) throw day.error;
+      if (result.error) throw result.error;
+      if (id === taskRequest.current) {setTasks(result.data || []);setDayAssignment(day.data);}
+    } catch (e) { if (id === taskRequest.current) setError('Kunne ikke oppdatere oppgavene. Prøv igjen.'); } finally { if(id===taskRequest.current)setLoading(false); }
+  }
+  async function toggle(task){
+    if (savingRef.current) return;
+    savingRef.current = true; taskRequest.current++; setSaving(task.id);
+    try {
+      const {data,error}=await supabase.from('tasks').update({completed:!task.completed,completed_at:!task.completed?new Date().toISOString():null}).eq('stable_id',STABLE_ID).eq('assigned_to',userId).eq('id',task.id).select('id,completed,completed_at').single();
+      if(error) throw error;
+      setTasks(items => items.map(item => item.id === data.id ? {...item,...data} : item));
+    } catch (e) { Alert.alert('Ikke lagret','Avkryssingen kunne ikke lagres. Prøv igjen.'); }
+    finally { savingRef.current = false; setSaving(null); }
+  }
+
+  return <View style={{marginTop:12}}><Text style={styles.sectionSmall}>Oppgaver · {formatDate(selectedDate)}</Text>{showHorse&&dayAssignment&&<><Text style={styles.bold}>{dayAssignment.horses?.name}</Text><TrainingText text={dayAssignment.training_text}/></>}{error?<><Text accessibilityRole="alert">{error}</Text><Btn title="Prøv igjen" secondary onPress={()=>loadTasks()}/></>:null}{loading?<Text style={styles.muted}>Henter oppgaver …</Text>:tasks.length?tasks.map(x=><Pressable key={x.id} accessibilityRole="checkbox" accessibilityState={{checked:x.completed,disabled:!!saving}} disabled={!!saving} onPress={()=>toggle(x)} style={styles.item}><Text style={x.completed?styles.done:null}>{x.completed?'✓ ':'○ '}{x.title}</Text>{x.horses?.name&&<Text style={styles.muted}>Hest: {x.horses.name}</Text>}</Pressable>):<Empty text="Ingen oppgaver på valgt dato."/>}</View>;
+}
+
 function TodayScreen({ userId }) {
-  const [tasks, setTasks] = useState([]);
   const [messages, setMessages] = useState([]);
   const [shifts, setShifts] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [nextAssignment, setNextAssignment] = useState(null);
   const [nextShift, setNextShift] = useState(null);
   const [agreements,setAgreements] = useState([]);
-  const [dayAssignment,setDayAssignment] = useState(null);
   const [selectedDate, setSelectedDate] = useState(localDate());
   const [today, setToday] = useState(localDate());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [saving, setSaving] = useState(null);
   const request = useRef(0);
-  const taskRequest = useRef(0);
-  const dateChosen = useRef(false);
-  const savingRef = useRef(false);
+  const [showCalendar,setShowCalendar]=useState(false);
+  const [showDetails,setShowDetails]=useState(false);
+  const [taskRevision,setTaskRevision]=useState(0);
   useEffect(() => {
     load();
     const timer = setInterval(load, 30000);
@@ -241,15 +306,6 @@ function TodayScreen({ userId }) {
     if (Platform.OS === 'web') window.addEventListener('focus', focus);
     return () => { clearInterval(timer); listener.remove(); if (Platform.OS === 'web') window.removeEventListener('focus', focus); request.current++; };
   }, [userId]);
-  useEffect(() => {
-    loadTasks();
-    const refresh = () => loadTasks(true);
-    const timer = setInterval(refresh, 30000);
-    const listener = AppState.addEventListener('change', state => { if (state === 'active') refresh(); });
-    if (Platform.OS === 'web') window.addEventListener('focus', refresh);
-    return () => { clearInterval(timer); listener.remove(); if (Platform.OS === 'web') window.removeEventListener('focus', refresh); taskRequest.current++; };
-  }, [selectedDate, userId]);
-  function chooseDate(date) { dateChosen.current = true; setSelectedDate(date); }
 
   async function load(){
     const id = ++request.current;
@@ -274,44 +330,22 @@ function TodayScreen({ userId }) {
       if (id !== request.current) return;
       setMessages(m.data||[]); setShifts(s.data||[]); setAssignments(a.data||[]);
       setNextAssignment(n.data ? {...n.data, origin:assignmentOrigin(n.data,r.data||[],swap)} : null); setNextShift(f.data); setAgreements(r.data||[]);
-      if (!dateChosen.current) setSelectedDate(a.data?.length ? d : n.data?.assignment_date || d);
     } catch (e) { if (id === request.current) setError('Kunne ikke oppdatere oversikten. Prøv igjen.'); }
     finally { if (id === request.current) setBusy(false); }
   }
-  async function loadTasks(background = false) {
-    const id = ++taskRequest.current;
-    if (!background) { setTasks([]); setDayAssignment(null); }
-    try {
-      const [result,day] = await Promise.all([
-        supabase.from('tasks').select('*,horses(name)').eq('stable_id',STABLE_ID).eq('task_date',selectedDate).eq('assigned_to',userId).order('standard_task_key',{nullsFirst:false}).order('created_at'),
-        supabase.from('horse_assignments').select('*,horses(name)').eq('stable_id',STABLE_ID).eq('user_id',userId).eq('assignment_date',selectedDate).eq('is_cancelled',false).maybeSingle()
-      ]);
-      if(day.error) throw day.error;
-      if (result.error) throw result.error;
-      if (id === taskRequest.current) {setTasks(result.data || []);setDayAssignment(day.data);}
-    } catch (e) { if (id === taskRequest.current) setError('Kunne ikke oppdatere oppgaver og trening. Trykk Oppdater for å prøve igjen.'); }
-  }
-  async function toggle(task){
-    if (savingRef.current) return;
-    savingRef.current = true; setSaving(task.id);
-    try {
-      const {data,error}=await supabase.from('tasks').update({completed:!task.completed,completed_at:!task.completed?new Date().toISOString():null}).eq('stable_id',STABLE_ID).eq('assigned_to',userId).eq('id',task.id).select('id,completed,completed_at').single();
-      if(error) throw error;
-      setTasks(items => items.map(item => item.id === data.id ? {...item,...data} : item));
-    } catch (e) { Alert.alert('Ikke lagret','Avkryssingen kunne ikke lagres. Prøv igjen.'); }
-    finally { savingRef.current = false; setSaving(null); }
-  }
 
   return <>
-    <Section title="Min oversikt"><Text style={styles.muted}>{formatDateLong(today)} · {weekLabel(today)}</Text>{error?<Text accessibilityRole="alert">{error}</Text>:null}<Btn title={busy?'Oppdaterer …':'Oppdater'} disabled={busy} secondary onPress={()=>{load();loadTasks();}}/></Section>
+    <Section title="Min oversikt"><Text style={styles.muted}>{formatDateLong(today)} · {weekLabel(today)} · Versjon 1.7.0</Text>{error?<Text accessibilityRole="alert">{error}</Text>:null}<Btn title={busy?'Oppdaterer …':'Oppdater'} disabled={busy} secondary onPress={()=>{load();setTaskRevision(v=>v+1);}}/></Section>
+    {assignments.length>0&&<Section title="Min hest i dag">{assignments.map(a=><View key={a.id}><View style={styles.horseCard}><Text style={styles.horseName}>🐴 {a.horses?.name || 'Hest'}</Text><Text>{formatDateLong(today)}</Text><TrainingText text={a.training_text}/></View><HorseDayTasks key={a.id+today+taskRevision} userId={userId} selectedDate={today}/></View>)}</Section>}
+    <Section title="Neste gang jeg har hest">{nextAssignment?<><View style={styles.horseCard}><Text style={styles.horseName}>🐴 {nextAssignment.horses?.name || 'Hest'}</Text><Text>{formatDateLong(nextAssignment.assignment_date)} · {weekLabel(nextAssignment.assignment_date)}</Text><Text style={styles.muted}>{nextAssignment.origin}</Text><TrainingText text={nextAssignment.training_text}/></View><HorseDayTasks key={nextAssignment.id+nextAssignment.assignment_date+taskRevision} userId={userId} selectedDate={nextAssignment.assignment_date}/></>:<Empty text="Ingen kommende hestetildeling registrert."/>}</Section>
+    {(shifts.length>0||nextShift)&&<Section title="Mine fôringer">{shifts.map(shift=><View key={shift.id} style={styles.item}><Text style={styles.bold}>I dag · {feedingLabel(shift)}</Text><Text style={styles.muted}>{formatDate(shift.shift_date)}</Text></View>)}{nextShift&&!shifts.some(shift=>shift.id===nextShift.id)&&<View style={styles.item}><Text style={styles.bold}>{feedingLabel(nextShift)}</Text><Text>{formatDateLong(nextShift.shift_date)}</Text></View>}</Section>}
+    <Btn title={showDetails?'Skjul flere valg':'Flere valg'} secondary onPress={()=>setShowDetails(v=>!v)}/>
+    {showDetails&&<>
     <Section title="Mine faste hestedager">{agreements.length?agreements.map(r=><View key={r.id} style={styles.item}><Text style={styles.bold}>{r.horses?.name} · {agreementLabel(r)}</Text><Text style={styles.muted}>Fra {formatDate(r.start_date)}</Text><TrainingText text={r.training_text}/></View>):<Empty text="Ingen fast avtale registrert. Admin kan legge inn partalls- og oddetallsuker."/>}</Section>
+    <Section title="Oppgaver på andre datoer"><Btn title={showCalendar?'Skjul kalender':'Velg en annen dato'} secondary onPress={()=>setShowCalendar(v=>!v)}/>{showCalendar&&<><CalendarPicker value={selectedDate} onChange={setSelectedDate}/><HorseDayTasks key={selectedDate+taskRevision} userId={userId} selectedDate={selectedDate} showHorse/></>}</Section>
     <Notifications supabase={supabase} stableId={STABLE_ID} userId={userId}/>
-    <Section title="Min hest i dag">{assignments.length ? assignments.map(a=><Pressable key={a.id} onPress={()=>chooseDate(today)} style={styles.horseCard}><Text style={styles.horseName}>🐴 {a.horses?.name || 'Hest'}</Text><Text>Se oppgaver · {formatDate(today)}</Text><TrainingText text={a.training_text}/></Pressable>) : <Empty text="Ingen hest er fordelt til deg i dag."/>}</Section>
-    <Section title="Neste gang jeg har hest">{nextAssignment?<Pressable onPress={()=>chooseDate(nextAssignment.assignment_date)} style={styles.horseCard}><Text style={styles.horseName}>🐴 {nextAssignment.horses?.name || 'Hest'}</Text><Text>{formatDateLong(nextAssignment.assignment_date)} · {weekLabel(nextAssignment.assignment_date)}</Text><Text style={styles.muted}>{nextAssignment.origin}</Text><TrainingText text={nextAssignment.training_text}/><Text style={styles.help}>Trykk for å se oppgavene.</Text></Pressable>:<Empty text="Ingen kommende hestetildeling registrert."/>}</Section>
-    <Section title="Neste fôring">{nextShift?<View style={styles.item}><Text style={styles.bold}>{feedingLabel(nextShift)}</Text><Text>{formatDateLong(nextShift.shift_date)}</Text></View>:<Empty text="Ingen kommende fôringsvakt registrert."/>}</Section>
-    <Section title="Mine oppgaver"><Text style={styles.muted}>{formatDateLong(selectedDate)}</Text><CalendarPicker value={selectedDate} onChange={chooseDate}/>{dayAssignment&&<View style={styles.horseCard}><Text style={styles.bold}>{dayAssignment.horses?.name}</Text><TrainingText text={dayAssignment.training_text}/></View>}{tasks.length?tasks.map(x=><Pressable key={x.id} accessibilityRole="checkbox" accessibilityState={{checked:x.completed,disabled:!!saving}} disabled={!!saving} onPress={()=>toggle(x)} style={styles.item}><Text style={x.completed?styles.done:null}>{x.completed?'✓ ':'○ '}{x.title}</Text>{x.horses?.name&&<Text style={styles.muted}>Hest: {x.horses.name}</Text>}</Pressable>):<Empty text="Ingen oppgaver på valgt dato."/>}</Section>
-    <Section title="Beskjeder">{messages.length?messages.map(x=><View key={x.id} style={styles.notice}><Text>{x.text}</Text></View>):<Empty text="Ingen nye beskjeder."/>}</Section>
-    <Section title="Mine fôringer i dag">{shifts.length?shifts.map(x=><View key={x.id} style={styles.item}><Text style={styles.bold}>{feedingLabel(x)}</Text></View>):<Empty text="Ingen fôringsvakter i dag."/>}</Section>
+    </>}
+    {messages.length>0&&<Section title="Beskjeder">{messages.length?messages.map(x=><View key={x.id} style={styles.notice}><Text>{x.text}</Text></View>):<Empty text="Ingen nye beskjeder."/>}</Section>}
   </>;
 }
 
