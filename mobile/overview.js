@@ -20,3 +20,15 @@ export function isoWeek(value) {
 }
 export const weekLabel = value => `Uke ${isoWeek(value)} · ${isoWeek(value)%2===0?'partallsuke':'oddetallsuke'}`;
 export const agreementLabel = rule => `${rule.weekday===6?'Lørdag':'Søndag'} i ${rule.week_parity===0?'partallsuker':'oddetallsuker'}`;
+
+// Concrete calendar rows remain authoritative: never reconstruct dates from a rule,
+// because cancellations, individual changes and approved swaps override that rule.
+export function assignmentOrigin(assignment, agreements = [], swap = null) {
+  const rule = agreements.find(item => item.id === assignment.recurring_id);
+  if (rule) return `Fast avtale · ${agreementLabel(rule)}`;
+  if (swap?.status === 'approved') {
+    const original = swap.from_assignment_id === assignment.id ? swap.to_snapshot : swap.to_assignment_id === assignment.id ? swap.from_snapshot : null;
+    if (original?.horse_id === assignment.horse_id && original?.assignment_date === assignment.assignment_date) return 'Godkjent hestebytte';
+  }
+  return 'Avtale for denne datoen';
+}

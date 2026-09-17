@@ -29,3 +29,17 @@ test('ISO week parity at year boundaries, including adjacent odd weeks 53 and 1'
   assert.equal(weekLabel('2027-01-02'),'Uke 53 · oddetallsuke');
   assert.equal(agreementLabel({weekday:7,week_parity:0}),'Søndag i partallsuker');
 });
+
+import { assignmentOrigin } from '../overview.js';
+test('next horse identifies the actual weekend agreement', () => {
+  const a = {id:'a', recurring_id:'rule', assignment_date:'2026-09-19'};
+  assert.equal(assignmentOrigin(a,[{id:'rule',weekday:6,week_parity:0}]), 'Fast avtale · Lørdag i partallsuker');
+});
+test('only an approved swap matching the current horse and date is labelled a swap', () => {
+  const a={id:'a',horse_id:'new-horse',assignment_date:'2026-09-27'};
+  const swap={status:'approved',from_assignment_id:'a',to_assignment_id:'b',to_snapshot:{horse_id:'new-horse',assignment_date:'2026-09-27'}};
+  assert.equal(assignmentOrigin(a,[],swap),'Godkjent hestebytte');
+  assert.equal(assignmentOrigin(a,[],{...swap,status:'awaiting_admin'}),'Avtale for denne datoen');
+  assert.equal(assignmentOrigin({...a,horse_id:'admin-override'},[],swap),'Avtale for denne datoen');
+  assert.equal(assignmentOrigin({...a,id:'unrelated'},[],swap),'Avtale for denne datoen');
+});

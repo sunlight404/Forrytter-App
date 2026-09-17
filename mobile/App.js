@@ -7,7 +7,7 @@ import HorseSwaps from './HorseSwaps';
 import Notifications, { disableDeviceNotifications } from './Notifications';
 const memberOptions=members=>members.map(m=>({value:m.user_id,label:(m.profiles?.full_name||'Uten navn')+(m.active===false?' (fjernet)':'')})).sort((a,b)=>a.label.localeCompare(b.label,'nb'));
 const horseOptions=horses=>horses.map(h=>({value:h.id,label:h.name})).sort((a,b)=>a.label.localeCompare(b.label,'nb'));
-import { STANDARD_TASKS, nextWeekend, isWeekend, feedingLabel, timeKey, upcomingShiftFilter, weekLabel, agreementLabel } from './overview';
+import { STANDARD_TASKS, nextWeekend, isWeekend, feedingLabel, timeKey, upcomingShiftFilter, weekLabel, agreementLabel, assignmentOrigin } from './overview';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 
@@ -231,14 +231,25 @@ function TodayScreen({ userId }) {
   const [saving, setSaving] = useState(null);
   const request = useRef(0);
   const taskRequest = useRef(0);
+  const dateChosen = useRef(false);
   const savingRef = useRef(false);
   useEffect(() => {
     load();
-    const timer = setInterval(load, 60000);
+    const timer = setInterval(load, 30000);
     const listener = AppState.addEventListener('change', state => { if (state === 'active') load(); });
-    return () => { clearInterval(timer); listener.remove(); request.current++; };
+    const focus = () => load();
+    if (Platform.OS === 'web') window.addEventListener('focus', focus);
+    return () => { clearInterval(timer); listener.remove(); if (Platform.OS === 'web') window.removeEventListener('focus', focus); request.current++; };
   }, [userId]);
-  useEffect(() => { loadTasks(); return () => { taskRequest.current++; }; }, [selectedDate, userId]);
+  useEffect(() => {
+    loadTasks();
+    const refresh = () => loadTasks(true);
+    const timer = setInterval(refresh, 30000);
+    const listener = AppState.addEventListener('change', state => { if (state === 'active') refresh(); });
+    if (Platform.OS === 'web') window.addEventListener('focus', refresh);
+    return () => { clearInterval(timer); listener.remove(); if (Platform.OS === 'web') window.removeEventListener('focus', refresh); taskRequest.current++; };
+  }, [selectedDate, userId]);
+  function chooseDate(date) { dateChosen.current = true; setSelectedDate(date); }
 
   async function load(){
     const id = ++request.current;
@@ -254,15 +265,22 @@ function TodayScreen({ userId }) {
       ]);
       const failure = [m,s,a,n,f,r].find(result => result.error);
       if (failure) throw failure.error;
+      let swap = null;
+      if (n.data && !n.data.recurring_id) {
+        const result = await supabase.from('horse_swap_requests').select('status,from_assignment_id,to_assignment_id,from_snapshot,to_snapshot').eq('stable_id',STABLE_ID).eq('status','approved').or(`from_assignment_id.eq.${n.data.id},to_assignment_id.eq.${n.data.id}`).order('decided_at',{ascending:false}).limit(1).maybeSingle();
+        if (result.error) throw result.error;
+        swap = result.data;
+      }
       if (id !== request.current) return;
       setMessages(m.data||[]); setShifts(s.data||[]); setAssignments(a.data||[]);
-      setNextAssignment(n.data); setNextShift(f.data); setAgreements(r.data||[]);
+      setNextAssignment(n.data ? {...n.data, origin:assignmentOrigin(n.data,r.data||[],swap)} : null); setNextShift(f.data); setAgreements(r.data||[]);
+      if (!dateChosen.current) setSelectedDate(a.data?.length ? d : n.data?.assignment_date || d);
     } catch (e) { if (id === request.current) setError('Kunne ikke oppdatere oversikten. Prøv igjen.'); }
     finally { if (id === request.current) setBusy(false); }
   }
-  async function loadTasks() {
+  async function loadTasks(background = false) {
     const id = ++taskRequest.current;
-    setTasks([]); setDayAssignment(null);
+    if (!background) { setTasks([]); setDayAssignment(null); }
     try {
       const [result,day] = await Promise.all([
         supabase.from('tasks').select('*,horses(name)').eq('stable_id',STABLE_ID).eq('task_date',selectedDate).eq('assigned_to',userId).order('standard_task_key',{nullsFirst:false}).order('created_at'),
@@ -271,7 +289,7 @@ function TodayScreen({ userId }) {
       if(day.error) throw day.error;
       if (result.error) throw result.error;
       if (id === taskRequest.current) {setTasks(result.data || []);setDayAssignment(day.data);}
-    } catch (e) { if (id === taskRequest.current) Alert.alert('Kunne ikke hente oppgaver', 'Trykk Oppdater for å prøve igjen.'); }
+    } catch (e) { if (id === taskRequest.current) setError('Kunne ikke oppdatere oppgaver og trening. Trykk Oppdater for å prøve igjen.'); }
   }
   async function toggle(task){
     if (savingRef.current) return;
@@ -288,10 +306,10 @@ function TodayScreen({ userId }) {
     <Section title="Min oversikt"><Text style={styles.muted}>{formatDateLong(today)} · {weekLabel(today)}</Text>{error?<Text accessibilityRole="alert">{error}</Text>:null}<Btn title={busy?'Oppdaterer …':'Oppdater'} disabled={busy} secondary onPress={()=>{load();loadTasks();}}/></Section>
     <Section title="Mine faste hestedager">{agreements.length?agreements.map(r=><View key={r.id} style={styles.item}><Text style={styles.bold}>{r.horses?.name} · {agreementLabel(r)}</Text><Text style={styles.muted}>Fra {formatDate(r.start_date)}</Text><TrainingText text={r.training_text}/></View>):<Empty text="Ingen fast avtale registrert. Admin kan legge inn partalls- og oddetallsuker."/>}</Section>
     <Notifications supabase={supabase} stableId={STABLE_ID} userId={userId}/>
-    <Section title="Min hest i dag">{assignments.length ? assignments.map(a=><Pressable key={a.id} onPress={()=>setSelectedDate(today)} style={styles.horseCard}><Text style={styles.horseName}>🐴 {a.horses?.name || 'Hest'}</Text><Text>Se oppgaver · {formatDate(today)}</Text><TrainingText text={a.training_text}/></Pressable>) : <Empty text="Ingen hest er fordelt til deg i dag."/>}</Section>
-    <Section title="Neste gang jeg har hest">{nextAssignment?<Pressable onPress={()=>setSelectedDate(nextAssignment.assignment_date)} style={styles.horseCard}><Text style={styles.horseName}>🐴 {nextAssignment.horses?.name || 'Hest'}</Text><Text>{formatDateLong(nextAssignment.assignment_date)} · {weekLabel(nextAssignment.assignment_date)}</Text><Text style={styles.muted}>{nextAssignment.recurring_id?'Fast avtale':'Avtale for denne datoen'}</Text><TrainingText text={nextAssignment.training_text}/><Text style={styles.help}>Trykk for å se oppgavene.</Text></Pressable>:<Empty text="Ingen kommende hestetildeling registrert."/>}</Section>
+    <Section title="Min hest i dag">{assignments.length ? assignments.map(a=><Pressable key={a.id} onPress={()=>chooseDate(today)} style={styles.horseCard}><Text style={styles.horseName}>🐴 {a.horses?.name || 'Hest'}</Text><Text>Se oppgaver · {formatDate(today)}</Text><TrainingText text={a.training_text}/></Pressable>) : <Empty text="Ingen hest er fordelt til deg i dag."/>}</Section>
+    <Section title="Neste gang jeg har hest">{nextAssignment?<Pressable onPress={()=>chooseDate(nextAssignment.assignment_date)} style={styles.horseCard}><Text style={styles.horseName}>🐴 {nextAssignment.horses?.name || 'Hest'}</Text><Text>{formatDateLong(nextAssignment.assignment_date)} · {weekLabel(nextAssignment.assignment_date)}</Text><Text style={styles.muted}>{nextAssignment.origin}</Text><TrainingText text={nextAssignment.training_text}/><Text style={styles.help}>Trykk for å se oppgavene.</Text></Pressable>:<Empty text="Ingen kommende hestetildeling registrert."/>}</Section>
     <Section title="Neste fôring">{nextShift?<View style={styles.item}><Text style={styles.bold}>{feedingLabel(nextShift)}</Text><Text>{formatDateLong(nextShift.shift_date)}</Text></View>:<Empty text="Ingen kommende fôringsvakt registrert."/>}</Section>
-    <Section title="Mine oppgaver"><CalendarPicker value={selectedDate} onChange={setSelectedDate}/>{dayAssignment&&<View style={styles.horseCard}><Text style={styles.bold}>{dayAssignment.horses?.name}</Text><TrainingText text={dayAssignment.training_text}/></View>}{tasks.length?tasks.map(x=><Pressable key={x.id} accessibilityRole="checkbox" accessibilityState={{checked:x.completed,disabled:!!saving}} disabled={!!saving} onPress={()=>toggle(x)} style={styles.item}><Text style={x.completed?styles.done:null}>{x.completed?'✓ ':'○ '}{x.title}</Text>{x.horses?.name&&<Text style={styles.muted}>Hest: {x.horses.name}</Text>}</Pressable>):<Empty text="Ingen oppgaver på valgt dato."/>}</Section>
+    <Section title="Mine oppgaver"><Text style={styles.muted}>{formatDateLong(selectedDate)}</Text><CalendarPicker value={selectedDate} onChange={chooseDate}/>{dayAssignment&&<View style={styles.horseCard}><Text style={styles.bold}>{dayAssignment.horses?.name}</Text><TrainingText text={dayAssignment.training_text}/></View>}{tasks.length?tasks.map(x=><Pressable key={x.id} accessibilityRole="checkbox" accessibilityState={{checked:x.completed,disabled:!!saving}} disabled={!!saving} onPress={()=>toggle(x)} style={styles.item}><Text style={x.completed?styles.done:null}>{x.completed?'✓ ':'○ '}{x.title}</Text>{x.horses?.name&&<Text style={styles.muted}>Hest: {x.horses.name}</Text>}</Pressable>):<Empty text="Ingen oppgaver på valgt dato."/>}</Section>
     <Section title="Beskjeder">{messages.length?messages.map(x=><View key={x.id} style={styles.notice}><Text>{x.text}</Text></View>):<Empty text="Ingen nye beskjeder."/>}</Section>
     <Section title="Mine fôringer i dag">{shifts.length?shifts.map(x=><View key={x.id} style={styles.item}><Text style={styles.bold}>{feedingLabel(x)}</Text></View>):<Empty text="Ingen fôringsvakter i dag."/>}</Section>
   </>;
