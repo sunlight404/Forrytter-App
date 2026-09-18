@@ -335,7 +335,7 @@ function TodayScreen({ userId }) {
   }
 
   return <>
-    <Section title="Min oversikt"><Text style={styles.muted}>{formatDateLong(today)} · {weekLabel(today)} · Versjon 1.7.1</Text>{error?<Text accessibilityRole="alert">{error}</Text>:null}<Btn title={busy?'Oppdaterer …':'Oppdater'} disabled={busy} secondary onPress={()=>{load();setTaskRevision(v=>v+1);}}/></Section>
+    <Section title="Min oversikt"><Text style={styles.muted}>{formatDateLong(today)} · {weekLabel(today)} · Versjon 1.7.2</Text>{error?<Text accessibilityRole="alert">{error}</Text>:null}<Btn title={busy?'Oppdaterer …':'Oppdater'} disabled={busy} secondary onPress={()=>{load();setTaskRevision(v=>v+1);}}/></Section>
     {assignments.length>0&&<Section title="Min hest i dag">{assignments.map(a=><View key={a.id}><View style={styles.horseCard}><Text style={styles.horseName}>🐴 {a.horses?.name || 'Hest'}</Text><Text>{formatDateLong(today)}</Text><TrainingText text={a.training_text}/></View><HorseDayTasks key={a.id+today+taskRevision} userId={userId} selectedDate={today}/></View>)}</Section>}
     <Section title="Neste gang jeg har hest">{nextAssignment?<><View style={styles.horseCard}><Text style={styles.horseName}>🐴 {nextAssignment.horses?.name || 'Hest'}</Text><Text>{formatDateLong(nextAssignment.assignment_date)} · {weekLabel(nextAssignment.assignment_date)}</Text><Text style={styles.muted}>{nextAssignment.origin}</Text><TrainingText text={nextAssignment.training_text}/></View><HorseDayTasks key={nextAssignment.id+nextAssignment.assignment_date+taskRevision} userId={userId} selectedDate={nextAssignment.assignment_date}/></>:<Empty text="Ingen kommende hestetildeling registrert."/>}</Section>
     {(shifts.length>0||nextShift)&&<Section title="Mine fôringer">{shifts.map(shift=><View key={shift.id} style={styles.item}><Text style={styles.bold}>I dag · {feedingLabel(shift)}</Text><Text style={styles.muted}>{formatDate(shift.shift_date)}</Text></View>)}{nextShift&&!shifts.some(shift=>shift.id===nextShift.id)&&<View style={styles.item}><Text style={styles.bold}>{feedingLabel(nextShift)}</Text><Text>{formatDateLong(nextShift.shift_date)}</Text></View>}</Section>}
@@ -403,6 +403,7 @@ function AdminScreen({ currentUserId, role }) {
   const [selectedUser,setSelectedUser]=useState(null);
   const [selectedHorse,setSelectedHorse]=useState(null);
   const [taskTitle,setTaskTitle]=useState('');
+  const [adminTaskRevision,setAdminTaskRevision]=useState(0);
   const [trainingText,setTrainingText]=useState('');
   const [assignmentLoading,setAssignmentLoading]=useState(false);
   const [assignmentLoadFailed,setAssignmentLoadFailed]=useState(false);
@@ -465,18 +466,18 @@ function AdminScreen({ currentUserId, role }) {
     if(!selectedUser||!selectedHorse)return Alert.alert('Velg fôrrytter og hest');
     if(!isWeekend(taskDate))return Alert.alert('Velg lørdag eller søndag');
     const {error}=await supabase.from('horse_assignments').upsert({stable_id:STABLE_ID,assignment_date:taskDate,user_id:selectedUser,horse_id:selectedHorse,created_by:currentUserId,training_text:trainingText.trim(),recurring_id:null,is_cancelled:false},{onConflict:'stable_id,assignment_date,user_id'});
-    if(error)Alert.alert('Feil',error.message);else Alert.alert('Lagret',`Hesten og de fem standardoppgavene er fordelt ${formatDate(taskDate)}.`);
+    if(error)Alert.alert('Feil',error.message);else {setAdminTaskRevision(v=>v+1);Alert.alert('Lagret',`Hest og trening er lagret ${formatDate(taskDate)}.`);}
   }
   async function removeHorseAssignment(){
     if(!selectedUser)return Alert.alert('Velg fôrrytter først');
     const {error}=await supabase.from('horse_assignments').update({is_cancelled:true,recurring_id:null}).eq('stable_id',STABLE_ID).eq('assignment_date',taskDate).eq('user_id',selectedUser);
-    if(error)Alert.alert('Feil',error.message);else Alert.alert('Fjernet',`Hestefordelingen ${formatDate(taskDate)} er fjernet.`);
+    if(error)Alert.alert('Feil',error.message);else {setAdminTaskRevision(v=>v+1);Alert.alert('Fjernet',`Hestefordelingen ${formatDate(taskDate)} er fjernet.`);}
   }
   async function addTask(){
     if(!selectedUser||!selectedHorse)return Alert.alert('Velg fôrrytter og hest');
     if(!taskTitle.trim())return Alert.alert('Skriv inn oppgave');
     const {error}=await supabase.from('tasks').insert({stable_id:STABLE_ID,title:taskTitle.trim(),task_date:taskDate,assigned_to:selectedUser,horse_id:selectedHorse});
-    if(error)Alert.alert('Feil',error.message);else{setTaskTitle('');Alert.alert('Lagt til','Oppgaven vises hos fôrrytteren på valgt dato.');}
+    if(error)Alert.alert('Feil',error.message);else{setTaskTitle('');setAdminTaskRevision(v=>v+1);Alert.alert('Lagt til','Oppgaven vises hos fôrrytteren på valgt dato.');}
   }
   async function addMessage(){if(!message.trim())return;const {error}=await supabase.from('messages').insert({stable_id:STABLE_ID,text:message.trim(),created_by:currentUserId});if(error)Alert.alert('Feil',error.message);else{setMessage('');Alert.alert('Publisert','Beskjeden vises i 24 timer.');}}
   async function addShift(){
@@ -507,6 +508,7 @@ function AdminScreen({ currentUserId, role }) {
       <Text style={styles.help}>Opprettes automatisk når du lagrer hestetildelingen. Hver oppgave kan krysses av individuelt.</Text>
       <Field label="4. Ekstra oppgave" value={taskTitle} onChangeText={setTaskTitle} placeholder="En ekstra oppgave for valgt hest, rytter og dato"/>
       <Btn title="Legg til oppgave" onPress={addTask}/>
+      <AdminTaskList key={[selectedUser,selectedHorse,taskDate,adminTaskRevision].join(":")} userId={selectedUser} horseId={selectedHorse} date={taskDate}/>
       <Text style={styles.help}>Dato vises som dag.mnd.år. Hestefordeling kan bare velges på lørdag og søndag.</Text>
     </Section>
 
@@ -606,4 +608,14 @@ function RecurringAgreementsAdmin({members,horses,currentUserId}) {
     <Btn title={busy?'Lagrer …':'Lagre fast avtale'} disabled={busy} onPress={save}/>
     <Text style={styles.help}>Samme rytter, uketype og ukedag oppdateres ved ny lagring. Dager med fullførte oppgaver beholdes. Endre bare én dato i «Hest og trening på en dato» nedenfor.</Text>
   </Section>;
+}
+
+function AdminTaskList({userId,horseId,date}){
+ const [tasks,setTasks]=useState([]),[loading,setLoading]=useState(true),[error,setError]=useState(''),[busy,setBusy]=useState(null);
+ useEffect(()=>{let live=true;if(!userId||!horseId){setLoading(false);return;}
+ supabase.from('tasks').select('id,title,completed,standard_task_key').eq('stable_id',STABLE_ID).eq('assigned_to',userId).eq('horse_id',horseId).eq('task_date',date).order('created_at').then(({data,error})=>{if(live){if(error)setError('Kunne ikke hente oppgavene. Velg datoen på nytt.');else setTasks(data||[]);setLoading(false);}}).catch(()=>{if(live){setError('Kunne ikke hente oppgavene.');setLoading(false);}});return()=>{live=false;};},[userId,horseId,date]);
+ async function remove(task){if(busy)return;setBusy(task.id);setError('');try{const {data,error}=await supabase.from('tasks').delete().eq('stable_id',STABLE_ID).eq('assigned_to',userId).eq('horse_id',horseId).eq('task_date',date).eq('id',task.id).select('id').single();if(error)throw error;if(data)setTasks(xs=>xs.filter(x=>x.id!==task.id));}catch{setError('Oppgaven kunne ikke fjernes. Prøv igjen.');}finally{setBusy(null);}}
+ function confirm(task){Alert.alert('Fjern oppgave','Vil du fjerne «'+task.title+'» for valgt hest og rytter '+formatDate(date)+'?'+(task.completed?' Oppgaven er allerede fullført.':''),[{text:'Avbryt',style:'cancel'},{text:'Fjern oppgave',style:'destructive',onPress:()=>remove(task)}]);}
+ if(!userId||!horseId)return null;
+ return <View style={{marginTop:16}}><Text style={styles.bold}>Oppgaver for valgt hest og dato</Text><Text style={styles.help}>Fjerning gjelder bare denne rytteren, hesten og datoen. Andre hestedager beholder oppgavene sine.</Text>{!!error&&<Text accessibilityRole="alert">{error}</Text>}{loading?<Text>Henter oppgaver …</Text>:tasks.length?tasks.map(t=><View key={t.id} style={styles.item}><Text>{t.completed?'✓ ':''}{t.title}</Text><Text style={styles.muted}>{t.standard_task_key?'Standardoppgave':'Ekstraoppgave'}{t.completed?' · Fullført':''}</Text><Btn title={busy===t.id?'Fjerner …':'Fjern oppgave'} danger disabled={!!busy} onPress={()=>confirm(t)}/></View>):!error&&<Empty text="Ingen oppgaver for valgt hest og dato."/>}</View>;
 }

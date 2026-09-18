@@ -36,6 +36,9 @@ begin
     raise exception 'Rider created assignment';
   exception when insufficient_privilege then null; end;
 
+  delete from public.tasks where id=extra;
+  get diagnostics changed = row_count;
+  if changed <> 0 then raise exception 'Rider deleted task'; end if;
   perform set_config('request.jwt.claim.sub',gen_random_uuid()::text,true);
   update public.tasks set completed=false where id=task;
   get diagnostics changed = row_count;
@@ -46,6 +49,10 @@ begin
     on conflict(stable_id,assignment_date,user_id) do update set horse_id=excluded.horse_id;
   if (select count(*) from public.tasks where assignment_id=assignment) <> 5 then raise exception 'Duplicate tasks'; end if;
   if not (select completed from public.tasks where id=task) then raise exception 'Completion lost on repeated save'; end if;
+  delete from public.tasks where assignment_id=assignment and standard_task_key=1;
+  update public.horse_assignments set training_text='Updated training' where id=assignment;
+  if (select count(*) from public.tasks where assignment_id=assignment) <> 4 then raise exception 'Removed task returned'; end if;
+  if not (select completed from public.tasks where id=task) then raise exception 'Completion lost after removal'; end if;
   update public.horse_assignments set horse_id=horse2 where id=assignment;
   if (select count(*) from public.tasks where assignment_id=assignment and horse_id=horse2 and not completed) <> 5 then raise exception 'Replacement did not reset tasks'; end if;
   if not exists(select 1 from public.tasks where id=extra and horse_id=horse1) then raise exception 'Extra task altered'; end if;
