@@ -336,7 +336,7 @@ function TodayScreen({ userId }) {
   }
 
   return <>
-    <Section title="Min oversikt"><Text style={styles.muted}>{formatDateLong(today)} · {weekLabel(today)} · Versjon 1.7.3</Text>{error?<Text accessibilityRole="alert">{error}</Text>:null}<Btn title={busy?'Oppdaterer …':'Oppdater'} disabled={busy} secondary onPress={()=>{load();setTaskRevision(v=>v+1);}}/></Section>
+    <Section title="Min oversikt"><Text style={styles.muted}>{formatDateLong(today)} · {weekLabel(today)} · Versjon 1.7.4</Text>{error?<Text accessibilityRole="alert">{error}</Text>:null}<Btn title={busy?'Oppdaterer …':'Oppdater'} disabled={busy} secondary onPress={()=>{load();setTaskRevision(v=>v+1);}}/></Section>
     {assignments.length>0&&<Section title="Min hest i dag">{assignments.map(a=><View key={a.id}><View style={styles.horseCard}><Text style={styles.horseName}>🐴 {a.horses?.name || 'Hest'}</Text><Text>{formatDateLong(today)}</Text><TrainingText text={a.training_text}/></View><HorseDayTasks key={a.id+today+taskRevision} userId={userId} selectedDate={today}/></View>)}</Section>}
     <Section title="Neste gang jeg har hest">{nextAssignment?<><View style={styles.horseCard}><Text style={styles.horseName}>🐴 {nextAssignment.horses?.name || 'Hest'}</Text><Text>{formatDateLong(nextAssignment.assignment_date)} · {weekLabel(nextAssignment.assignment_date)}</Text><Text style={styles.muted}>{nextAssignment.origin}</Text>{!nextAssignment.recurring_id&&nextAssignment.origin!=='Godkjent hestebytte'&&<Text style={styles.help}>Treningen er lagret spesielt for denne datoen og overstyrer fast avtale.</Text>}<TrainingText text={nextAssignment.training_text}/></View><HorseDayTasks key={nextAssignment.id+nextAssignment.assignment_date+taskRevision} userId={userId} selectedDate={nextAssignment.assignment_date}/></>:<Empty text="Ingen kommende hestetildeling registrert."/>}</Section>
     {(shifts.length>0||nextShift)&&<Section title="Mine fôringer">{shifts.map(shift=><View key={shift.id} style={styles.item}><Text style={styles.bold}>I dag · {feedingLabel(shift)}</Text><Text style={styles.muted}>{formatDate(shift.shift_date)}</Text></View>)}{nextShift&&!shifts.some(shift=>shift.id===nextShift.id)&&<View style={styles.item}><Text style={styles.bold}>{feedingLabel(nextShift)}</Text><Text>{formatDateLong(nextShift.shift_date)}</Text></View>}</Section>}
@@ -351,27 +351,20 @@ function TodayScreen({ userId }) {
 }
 
 function FeedingScreen({ userId }) {
-  const [swapShift,setSwapShift]=useState(null),[swapUser,setSwapUser]=useState(null);
-  const [shifts,setShifts]=useState([]); const [members,setMembers]=useState([]); const [swaps,setSwaps]=useState([]); const [selectedDate,setSelectedDate]=useState(localDate());
+  const [shifts,setShifts]=useState([]); const [members,setMembers]=useState([]); const [selectedDate,setSelectedDate]=useState(localDate());
   useEffect(()=>{load();},[selectedDate]);
   async function load(){
     const selected=parseIsoDate(selectedDate); const from=toIsoDate(new Date(selected.getFullYear(),selected.getMonth(),1)); const to=toIsoDate(new Date(selected.getFullYear(),selected.getMonth()+1,0));
-    const [s,m,w]=await Promise.all([
+    const [s,m]=await Promise.all([
       supabase.from('feeding_shifts').select('*').gte('shift_date',from).lte('shift_date',to).order('shift_date').order('shift_time'),
-      supabase.from('memberships').select('user_id,role,profiles(full_name)').eq('stable_id',STABLE_ID).eq('active',true),
-      supabase.from('feeding_swap_requests').select('*').eq('stable_id',STABLE_ID).order('requested_at',{ascending:false})
+      supabase.from('memberships').select('user_id,role,profiles(full_name)').eq('stable_id',STABLE_ID).eq('active',true)
     ]);
-    setShifts(s.data||[]); setMembers(m.data||[]); setSwaps(w.data||[]);
+    setShifts(s.data||[]); setMembers(m.data||[]);
   }
   const nameOf=id=>id?(members.find(m=>m.user_id===id)?.profiles?.full_name||'Tidligere bruker'):'Ikke fordelt';
-  function askSwap(shift){setSwapShift(shift);setSwapUser(null);}
-  async function createSwap(shift,to){const {error}=await supabase.from('feeding_swap_requests').insert({stable_id:STABLE_ID,shift_id:shift.id,from_user:userId,to_user:to,status:'pending'}); if(error)Alert.alert('Feil',error.message); else{setSwapShift(null);load();}}
-  async function respond(id,ok){const {error}=await supabase.from('feeding_swap_requests').update({status:ok?'awaiting_admin':'declined',responded_at:new Date().toISOString()}).eq('id',id); if(error)Alert.alert('Feil',error.message); else load();}
   const dayShifts=shifts.filter(s=>s.shift_date===selectedDate); const marked=[...new Set(shifts.map(s=>s.shift_date))];
   return <>
-    <Section title="Fôringskalender"><CalendarPicker value={selectedDate} onChange={setSelectedDate} markedDates={marked}/><Text style={styles.sectionSmall}>{formatDateLong(selectedDate)}</Text>{dayShifts.length?dayShifts.map(s=><View key={s.id} style={styles.itemRow}><View><Text style={styles.bold}>{s.label}</Text><Text style={styles.muted}>{nameOf(s.assigned_to)}</Text></View>{s.assigned_to===userId&&<Btn title="Bytt" secondary onPress={()=>askSwap(s)}/>}</View>):<Empty text="Ingen morgen- eller kveldsfôring registrert denne dagen."/>}</Section>
-    {swapShift&&<Section title="Be om bytte"><Text>{formatDate(swapShift.shift_date)} · {feedingLabel(swapShift)}</Text><Dropdown label="Hvem vil du spørre?" value={swapUser} onChange={setSwapUser} options={memberOptions(members.filter(m=>m.user_id!==userId))}/><View style={styles.row}><Btn title="Send forespørsel" disabled={!swapUser} onPress={()=>createSwap(swapShift,swapUser)}/><Btn title="Avbryt" secondary onPress={()=>setSwapShift(null)}/></View></Section>}
-    <Section title="Bytteforespørsler">{swaps.filter(x=>x.from_user===userId||x.to_user===userId).map(x=><View key={x.id} style={styles.item}><Text>{nameOf(x.from_user)} → {nameOf(x.to_user)}</Text><Text style={styles.muted}>{x.status==='pending'?'Venter på mottaker':x.status==='awaiting_admin'?'Venter på admin':x.status==='approved'?'Godkjent':'Avslått'}</Text>{x.to_user===userId&&x.status==='pending'&&<View style={styles.row}><Btn title="Godta" onPress={()=>respond(x.id,true)}/><Btn title="Avslå" danger onPress={()=>respond(x.id,false)}/></View>}</View>)}{!swaps.some(x=>x.from_user===userId||x.to_user===userId)&&<Empty text="Ingen forespørsler."/>}</Section>
+    <Section title="Fôringskalender"><CalendarPicker value={selectedDate} onChange={setSelectedDate} markedDates={marked}/><Text style={styles.sectionSmall}>{formatDateLong(selectedDate)}</Text>{dayShifts.length?dayShifts.map(s=><View key={s.id} style={styles.itemRow}><View><Text style={styles.bold}>{s.label}</Text><Text style={styles.muted}>{nameOf(s.assigned_to)}</Text></View></View>):<Empty text="Ingen morgen- eller kveldsfôring registrert denne dagen."/>}</Section>
   </>;
 }
 
@@ -390,7 +383,6 @@ function MessagesScreen({ isAdmin }){
 function AdminScreen({ currentUserId, role }) {
   const [requests,setRequests]=useState([]);
   const [members,setMembers]=useState([]);
-  const [swaps,setSwaps]=useState([]);
   const [horses,setHorses]=useState([]);
   const [horse,setHorse]=useState('');
   const [allMembers,setAllMembers]=useState([]);
@@ -428,14 +420,13 @@ function AdminScreen({ currentUserId, role }) {
 
   useEffect(()=>{load();},[]);
   async function load(){
-    const [r,m,s,h,u]=await Promise.all([
+    const [r,m,h,u]=await Promise.all([
       supabase.from('join_requests').select('*').eq('stable_id',STABLE_ID).eq('status','pending').order('created_at'),
       supabase.from('memberships').select('user_id,role,active,profiles(full_name)').eq('stable_id',STABLE_ID).eq('archived',false),
-      supabase.from('feeding_swap_requests').select('*').eq('stable_id',STABLE_ID).eq('status','awaiting_admin').order('requested_at'),
       supabase.from('horses').select('*').eq('stable_id',STABLE_ID).eq('active',true).order('name'),
       supabase.from('feeding_shifts').select('*').eq('stable_id',STABLE_ID).is('assigned_to',null).gte('shift_date',localDate()).order('shift_date').order('shift_time')
     ]);
-    setRequests(r.data||[]); setAllMembers(m.data||[]);setMembers((m.data||[]).filter(x=>x.active));setUnassigned(u.data||[]); setSwaps(s.data||[]); setHorses(h.data||[]);
+    setRequests(r.data||[]); setAllMembers(m.data||[]);setMembers((m.data||[]).filter(x=>x.active));setUnassigned(u.data||[]); setHorses(h.data||[]);
   }
   const nameOf=id=>members.find(m=>m.user_id===id)?.profiles?.full_name||id.slice(0,8);
   function confirmMemberAccess(m){
@@ -487,8 +478,6 @@ function AdminScreen({ currentUserId, role }) {
     const {error}=await supabase.from('feeding_shifts').insert({stable_id:STABLE_ID,shift_date:feedDate,shift_time:shiftTime,label:shiftLabel,assigned_to:feedUser,original_assigned_to:feedUser,created_by:currentUserId});
     if(error)Alert.alert('Feil',error.message);else Alert.alert('Lagt til',`${shiftLabel} ${formatDate(feedDate)} er opprettet.`);
   }
-  async function approveSwap(x){const {data:shift}=await supabase.from('feeding_shifts').select('*').eq('id',x.shift_id).single();if(!shift)return;const a=await supabase.from('feeding_shifts').update({assigned_to:x.to_user,original_assigned_to:shift.original_assigned_to||shift.assigned_to}).eq('id',x.shift_id);if(a.error)return Alert.alert('Feil',a.error.message);await supabase.from('feeding_swap_requests').update({status:'approved',admin_decided_at:new Date().toISOString(),admin_decided_by:currentUserId}).eq('id',x.id);load();}
-  async function declineSwap(x){await supabase.from('feeding_swap_requests').update({status:'declined',admin_decided_at:new Date().toISOString(),admin_decided_by:currentUserId}).eq('id',x.id);load();}
 
   return <>
     <Section title="Nye brukere">{requests.length?requests.map(r=><View key={r.id} style={styles.item}><Text style={styles.bold}>Ny konto · {r.user_id.slice(0,8)}</Text><Text style={styles.muted}>Venter på tilgang</Text><View style={styles.row}><Btn title="Godkjenn" onPress={()=>approveUser(r)}/><Btn title="Avslå" danger onPress={()=>declineUser(r)}/></View></View>):<Empty text="Ingen nye brukere venter."/>}</Section>
@@ -503,19 +492,26 @@ function AdminScreen({ currentUserId, role }) {
       {!horses.length&&<Text style={styles.help}>Legg til hester i seksjonen «Hester» under først.</Text>}
       <Text style={styles.label}>3. Velg lørdag eller søndag</Text><CalendarPicker value={taskDate} onChange={setTaskDate} weekendOnly/>
       <Field label="Trening denne dagen" value={trainingText} onChangeText={setTrainingText} multiline maxLength={4000} placeholder="Beskriv hva slags trening hesten skal ha"/><Text style={styles.help}>En lagring her gjelder bare valgt dato og overstyrer eventuell fast avtale.</Text>{!!assignmentError&&<Text style={styles.help}>{assignmentError}</Text>}<View style={styles.row}><Btn title="Lagre hest og trening" disabled={assignmentLoading||assignmentLoadFailed} onPress={saveHorseAssignment}/><Btn title="Fjern hestefordeling" danger onPress={removeHorseAssignment}/></View>
+
+    </Section>
+
+    <Section title="Oppgaver">
+      <Text style={styles.help}>Velg rytter, hest og dato for å legge til eller fjerne oppgaver.</Text>
+      <Dropdown label="Fôrrytter for oppgaver" value={selectedUser} onChange={setSelectedUser} options={memberOptions(members)}/>
+      <Dropdown label="Hest for oppgaver" value={selectedHorse} onChange={setSelectedHorse} options={horseOptions(horses)}/>
+      <CalendarPicker value={taskDate} onChange={setTaskDate}/>
       <View style={styles.divider}/>
       <Text style={styles.bold}>Fem faste standardoppgaver</Text>
       {STANDARD_TASKS.map(title=><Text key={title} style={styles.help}>○ {title}</Text>)}
       <Text style={styles.help}>Opprettes automatisk når du lagrer hestetildelingen. Hver oppgave kan krysses av individuelt.</Text>
-      <Field label="4. Ekstra oppgave" value={taskTitle} onChangeText={setTaskTitle} placeholder="En ekstra oppgave for valgt hest, rytter og dato"/>
+      <Field label="Ekstra oppgave" value={taskTitle} onChangeText={setTaskTitle} placeholder="En ekstra oppgave for valgt hest, rytter og dato"/>
       <Btn title="Legg til oppgave" onPress={addTask}/>
       <AdminTaskList key={[selectedUser,selectedHorse,taskDate,adminTaskRevision].join(":")} userId={selectedUser} horseId={selectedHorse} date={taskDate}/>
-      <Text style={styles.help}>Dato vises som dag.mnd.år. Hestefordeling kan bare velges på lørdag og søndag.</Text>
+
     </Section>
 
     <Section title="Hester">{horses.length?horses.map(h=><View key={h.id} style={styles.itemRow}><Text style={styles.bold}>🐴 {h.name}</Text><Btn title="Fjern" danger onPress={()=>confirmRemoveHorse(h)}/></View>):<Empty text="Ingen hester lagt inn ennå."/>}<Field label="Ny hest" value={horse} onChangeText={setHorse}/><Btn title="Legg til hest" onPress={addHorse}/><Text style={styles.help}>Samme hestenavn kan ikke legges inn to ganger.</Text></Section>
 
-    <Section title="Bytter som venter på admin">{swaps.length?swaps.map(x=><View key={x.id} style={styles.item}><Text>{nameOf(x.from_user)} → {nameOf(x.to_user)}</Text><View style={styles.row}><Btn title="Godkjenn" onPress={()=>approveSwap(x)}/><Btn title="Avslå" danger onPress={()=>declineSwap(x)}/></View></View>):<Empty text="Ingen bytter venter."/>}</Section>
 
     <Section title="Ny fellesbeskjed"><Field label="Beskjed" value={message} onChangeText={setMessage} multiline/><Btn title="Publiser i 24 timer" onPress={addMessage}/></Section>
 
