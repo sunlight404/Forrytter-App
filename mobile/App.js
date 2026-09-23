@@ -336,7 +336,7 @@ function TodayScreen({ userId }) {
   }
 
   return <>
-    <Section title="Min oversikt"><Text style={styles.muted}>{formatDateLong(today)} · {weekLabel(today)} · Versjon 1.7.4</Text>{error?<Text accessibilityRole="alert">{error}</Text>:null}<Btn title={busy?'Oppdaterer …':'Oppdater'} disabled={busy} secondary onPress={()=>{load();setTaskRevision(v=>v+1);}}/></Section>
+    <Section title="Min oversikt"><Text style={styles.muted}>{formatDateLong(today)} · {weekLabel(today)} · Versjon 1.7.5</Text>{error?<Text accessibilityRole="alert">{error}</Text>:null}<Btn title={busy?'Oppdaterer …':'Oppdater'} disabled={busy} secondary onPress={()=>{load();setTaskRevision(v=>v+1);}}/></Section>
     {assignments.length>0&&<Section title="Min hest i dag">{assignments.map(a=><View key={a.id}><View style={styles.horseCard}><Text style={styles.horseName}>🐴 {a.horses?.name || 'Hest'}</Text><Text>{formatDateLong(today)}</Text><TrainingText text={a.training_text}/></View><HorseDayTasks key={a.id+today+taskRevision} userId={userId} selectedDate={today}/></View>)}</Section>}
     <Section title="Neste gang jeg har hest">{nextAssignment?<><View style={styles.horseCard}><Text style={styles.horseName}>🐴 {nextAssignment.horses?.name || 'Hest'}</Text><Text>{formatDateLong(nextAssignment.assignment_date)} · {weekLabel(nextAssignment.assignment_date)}</Text><Text style={styles.muted}>{nextAssignment.origin}</Text>{!nextAssignment.recurring_id&&nextAssignment.origin!=='Godkjent hestebytte'&&<Text style={styles.help}>Treningen er lagret spesielt for denne datoen og overstyrer fast avtale.</Text>}<TrainingText text={nextAssignment.training_text}/></View><HorseDayTasks key={nextAssignment.id+nextAssignment.assignment_date+taskRevision} userId={userId} selectedDate={nextAssignment.assignment_date}/></>:<Empty text="Ingen kommende hestetildeling registrert."/>}</Section>
     {(shifts.length>0||nextShift)&&<Section title="Mine fôringer">{shifts.map(shift=><View key={shift.id} style={styles.item}><Text style={styles.bold}>I dag · {feedingLabel(shift)}</Text><Text style={styles.muted}>{formatDate(shift.shift_date)}</Text></View>)}{nextShift&&!shifts.some(shift=>shift.id===nextShift.id)&&<View style={styles.item}><Text style={styles.bold}>{feedingLabel(nextShift)}</Text><Text>{formatDateLong(nextShift.shift_date)}</Text></View>}</Section>}
@@ -381,12 +381,18 @@ function MessagesScreen({ isAdmin }){
 }
 
 function AdminScreen({ currentUserId, role }) {
+  const [adminPanel,setAdminPanel]=useState('overview');
+  const [taskUser,setTaskUser]=useState(null),[taskHorse,setTaskHorse]=useState(null),[tasksDate,setTasksDate]=useState(localDate());
   const [requests,setRequests]=useState([]);
   const [members,setMembers]=useState([]);
   const [horses,setHorses]=useState([]);
   const [horse,setHorse]=useState('');
   const [allMembers,setAllMembers]=useState([]);
   const [managedUser,setManagedUser]=useState(null);
+  const [profileSearch,setProfileSearch]=useState(''),[profileName,setProfileName]=useState(''),[profileFilter,setProfileFilter]=useState('active');
+  useEffect(()=>{setProfileName(allMembers.find(m=>m.user_id===managedUser)?.profiles?.full_name||'');},[managedUser,allMembers]);
+  async function saveProfileName(){if(!managedUser||!profileName.trim())return Alert.alert('Skriv inn navn');setMemberBusy(true);try{const {error}=await supabase.rpc('admin_update_profile_name',{p_stable:STABLE_ID,p_user:managedUser,p_name:profileName.trim()});if(error)throw error;await load();Alert.alert('Navn lagret','Navnet er oppdatert i brukerlisten.');}catch(e){Alert.alert('Kunne ikke lagre navn',e.message);}finally{setMemberBusy(false);}}
+
   const [unassigned,setUnassigned]=useState([]);
   const [replacements,setReplacements]=useState({});
   const [memberVersion,setMemberVersion]=useState(0);
@@ -466,9 +472,9 @@ function AdminScreen({ currentUserId, role }) {
     if(error)Alert.alert('Feil',error.message);else {setAdminTaskRevision(v=>v+1);Alert.alert('Fjernet',`Hestefordelingen ${formatDate(taskDate)} er fjernet.`);}
   }
   async function addTask(){
-    if(!selectedUser||!selectedHorse)return Alert.alert('Velg fôrrytter og hest');
+    if(!taskUser||!taskHorse)return Alert.alert('Velg fôrrytter og hest');
     if(!taskTitle.trim())return Alert.alert('Skriv inn oppgave');
-    const {error}=await supabase.from('tasks').insert({stable_id:STABLE_ID,title:taskTitle.trim(),task_date:taskDate,assigned_to:selectedUser,horse_id:selectedHorse});
+    const {error}=await supabase.from('tasks').insert({stable_id:STABLE_ID,title:taskTitle.trim(),task_date:tasksDate,assigned_to:taskUser,horse_id:taskHorse});
     if(error)Alert.alert('Feil',error.message);else{setTaskTitle('');setAdminTaskRevision(v=>v+1);Alert.alert('Lagt til','Oppgaven vises hos fôrrytteren på valgt dato.');}
   }
   async function addMessage(){if(!message.trim())return;const {error}=await supabase.from('messages').insert({stable_id:STABLE_ID,text:message.trim(),created_by:currentUserId});if(error)Alert.alert('Feil',error.message);else{setMessage('');Alert.alert('Publisert','Beskjeden vises i 24 timer.');}}
@@ -479,43 +485,48 @@ function AdminScreen({ currentUserId, role }) {
     if(error)Alert.alert('Feil',error.message);else Alert.alert('Lagt til',`${shiftLabel} ${formatDate(feedDate)} er opprettet.`);
   }
 
+  const sections=[['profiles','Brukerprofiler','Finn en bruker, godkjenn tilgang og endre rolle.'],['agreements','Faste avtaler','Rediger faste helger, hest og trening.'],['training','Hest og trening','Endre hest eller trening på én bestemt dato.'],['tasks','Oppgaver','Legg til og fjern oppgaver for en hestedag.'],['feeding','Fôringer','Fordel morgen- og kveldsfôring.'],['horses','Hester','Legg til eller fjern hester fra listen.'],['messages','Beskjeder','Publiser en beskjed til alle.']];
+  const currentSection=sections.find(x=>x[0]===adminPanel);
   return <>
-    <Section title="Nye brukere">{requests.length?requests.map(r=><View key={r.id} style={styles.item}><Text style={styles.bold}>Ny konto · {r.user_id.slice(0,8)}</Text><Text style={styles.muted}>Venter på tilgang</Text><View style={styles.row}><Btn title="Godkjenn" onPress={()=>approveUser(r)}/><Btn title="Avslå" danger onPress={()=>declineUser(r)}/></View></View>):<Empty text="Ingen nye brukere venter."/>}</Section>
+    <Section title="Admin"><Text style={styles.help}>Velg hva du vil administrere.</Text>{adminPanel!=='overview'&&<Btn title="Tilbake til adminoversikt" secondary onPress={()=>setAdminPanel('overview')}/>}<View style={styles.choiceWrap}>{sections.map(([key,title])=><Choice key={key} label={title} selected={adminPanel===key} onPress={()=>setAdminPanel(key)}/>)}</View>{currentSection&&<><Text style={styles.bold}>{currentSection[1]}</Text><Text style={styles.help}>{currentSection[2]}</Text></>}</Section>
+    {adminPanel==='overview'&&<Section title="Adminoversikt"><Text style={styles.help}>{members.length} aktive brukere · {horses.length} hester</Text>{requests.length>0&&<Btn title={requests.length+' nye brukere venter på godkjenning'} onPress={()=>setAdminPanel('profiles')}/>} {unassigned.length>0&&<Btn title={unassigned.length+' fôringer mangler rytter'} onPress={()=>setAdminPanel('feeding')}/>} {sections.map(([key,title,description])=><Pressable key={key} accessibilityRole="button" accessibilityLabel={'Åpne '+title} style={styles.item} onPress={()=>setAdminPanel(key)}><Text style={styles.bold}>{title} →</Text><Text style={styles.help}>{description}</Text></Pressable>)}</Section>}
 
-    <Section title="Brukere og roller"><Dropdown label="Velg bruker" value={managedUser} onChange={setManagedUser} options={memberOptions(allMembers)}/>{allMembers.filter(m=>m.user_id===managedUser).map(m=><View key={m.user_id} style={styles.item}><Text style={styles.bold}>{m.profiles?.full_name||'Bruker'}</Text><Text style={styles.muted}>{m.role==='owner'?'Eier':m.role==='admin'?'Admin':'Fôrrytter'}{!m.active?' · Fjernet fra stallen':''}</Text>{role==='owner'&&m.active&&m.user_id!==currentUserId&&m.role!=='owner'&&<View style={styles.row}><Btn title="Fôrrytter" secondary={m.role!=='rider'} onPress={()=>setRoleFor(m,'rider')}/><Btn title="Admin" secondary={m.role!=='admin'} onPress={()=>setRoleFor(m,'admin')}/></View>}{m.user_id!==currentUserId&&m.role!=='owner'&&(role==='owner'||m.role==='rider')&&<Btn title={m.active?'Fjern bruker fra stallen':'Gi tilgang igjen'} danger={m.active} disabled={memberBusy} onPress={()=>confirmMemberAccess(m)}/>}</View>)}<Text style={styles.help}>Fjerning stenger stalltilgangen. Kontoen og historikken beholdes. Eier kan ikke fjernes her.</Text></Section>
-    <Section title="Fôringer uten rytter">{unassigned.length?unassigned.map(shift=><View key={shift.id} style={styles.item}><Text style={styles.bold}>{formatDate(shift.shift_date)} · {feedingLabel(shift)}</Text><Dropdown label="Ny fôrrytter" value={replacements[shift.id]} onChange={value=>setReplacements(x=>({...x,[shift.id]:value}))} options={memberOptions(members)}/><Btn title="Fordel fôringen" onPress={()=>reassignFeeding(shift)}/></View>):<Empty text="Ingen kommende fôringer mangler rytter."/>}</Section>
+    <View style={{display:adminPanel==='profiles'?'flex':'none'}}><Section title="Nye brukere">{requests.length?requests.map(r=><View key={r.id} style={styles.item}><Text style={styles.bold}>Ny konto · {r.user_id.slice(0,8)}</Text><Text style={styles.muted}>Venter på tilgang</Text><View style={styles.row}><Btn title="Godkjenn" onPress={()=>approveUser(r)}/><Btn title="Avslå" danger onPress={()=>declineUser(r)}/></View></View>):<Empty text="Ingen nye brukere venter."/>}</Section></View>
 
-    <RecurringAgreementsAdmin key={memberVersion} members={members} horses={horses} currentUserId={currentUserId}/>
-    <Section title="Hest og trening på en dato">
+    <View style={{display:adminPanel==='profiles'?'flex':'none'}}><Section title="Brukerprofiler"><Field label="Søk etter navn" value={profileSearch} onChangeText={setProfileSearch} placeholder="Skriv hele eller deler av navnet"/><View style={styles.choiceWrap}>{[['active','Aktive'],['removed','Fjernede'],['all','Alle']].map(([key,label])=><Choice key={key} label={label} selected={profileFilter===key} onPress={()=>setProfileFilter(key)}/>)}</View><Dropdown label="Velg profil å redigere" value={managedUser} onChange={setManagedUser} options={memberOptions(allMembers.filter(m=>(profileFilter==='all'||(profileFilter==='active'?m.active:!m.active))&&(m.profiles?.full_name||'').toLocaleLowerCase('nb').includes(profileSearch.trim().toLocaleLowerCase('nb'))))}/>{!managedUser&&<Empty text="Velg en bruker for å se navn, rolle og tilgang."/>}{allMembers.filter(m=>m.user_id===managedUser).map(m=><View key={m.user_id} style={styles.item}><Text style={styles.bold}>Du redigerer: {m.profiles?.full_name||'Bruker'}</Text><Field label="Navn på profilen" value={profileName} onChangeText={setProfileName} maxLength={120}/><Btn title={memberBusy?'Lagrer …':'Lagre navn'} disabled={memberBusy||!profileName.trim()||profileName.trim()===(m.profiles?.full_name||'')} onPress={saveProfileName}/><Text style={styles.muted}>{m.role==='owner'?'Eier':m.role==='admin'?'Admin':'Fôrrytter'}{!m.active?' · Fjernet fra stallen':''}</Text>{role==='owner'&&m.active&&m.user_id!==currentUserId&&m.role!=='owner'&&<View style={styles.row}><Btn title="Fôrrytter" secondary={m.role!=='rider'} onPress={()=>setRoleFor(m,'rider')}/><Btn title="Admin" secondary={m.role!=='admin'} onPress={()=>setRoleFor(m,'admin')}/></View>}{m.user_id!==currentUserId&&m.role!=='owner'&&(role==='owner'||m.role==='rider')&&<Btn title={m.active?'Fjern bruker fra stallen':'Gi tilgang igjen'} danger={m.active} disabled={memberBusy} onPress={()=>confirmMemberAccess(m)}/>}</View>)}<Text style={styles.help}>Fjerning stenger stalltilgangen. Kontoen og historikken beholdes. Eier kan ikke fjernes her.</Text></Section></View>
+    <View style={{display:adminPanel==='feeding'?'flex':'none'}}><Section title="Fôringer uten rytter">{unassigned.length?unassigned.map(shift=><View key={shift.id} style={styles.item}><Text style={styles.bold}>{formatDate(shift.shift_date)} · {feedingLabel(shift)}</Text><Dropdown label="Ny fôrrytter" value={replacements[shift.id]} onChange={value=>setReplacements(x=>({...x,[shift.id]:value}))} options={memberOptions(members)}/><Btn title="Fordel fôringen" onPress={()=>reassignFeeding(shift)}/></View>):<Empty text="Ingen kommende fôringer mangler rytter."/>}</Section></View>
+
+    <View style={{display:adminPanel==='agreements'?'flex':'none'}}><RecurringAgreementsAdmin key={memberVersion} members={members} horses={horses} currentUserId={currentUserId}/></View>
+    <View style={{display:adminPanel==='training'?'flex':'none'}}><Section title="Hest og trening på en dato">
       <Dropdown label="1. Velg fôrrytter" value={selectedUser} onChange={setSelectedUser} options={memberOptions(members)}/>
       <Dropdown label="2. Velg hest" value={selectedHorse} onChange={setSelectedHorse} options={horseOptions(horses)}/>
       {!horses.length&&<Text style={styles.help}>Legg til hester i seksjonen «Hester» under først.</Text>}
       <Text style={styles.label}>3. Velg lørdag eller søndag</Text><CalendarPicker value={taskDate} onChange={setTaskDate} weekendOnly/>
-      <Field label="Trening denne dagen" value={trainingText} onChangeText={setTrainingText} multiline maxLength={4000} placeholder="Beskriv hva slags trening hesten skal ha"/><Text style={styles.help}>En lagring her gjelder bare valgt dato og overstyrer eventuell fast avtale.</Text>{!!assignmentError&&<Text style={styles.help}>{assignmentError}</Text>}<View style={styles.row}><Btn title="Lagre hest og trening" disabled={assignmentLoading||assignmentLoadFailed} onPress={saveHorseAssignment}/><Btn title="Fjern hestefordeling" danger onPress={removeHorseAssignment}/></View>
+      {selectedUser&&<View style={styles.notice}><Text style={styles.bold}>Du redigerer: {nameOf(selectedUser)}</Text><Text>{formatDateLong(taskDate)}{selectedHorse?' · '+(horses.find(h=>h.id===selectedHorse)?.name||''):''}</Text><Text>Endringen gjelder bare denne datoen.</Text></View>}<Field label="Trening denne dagen" value={trainingText} onChangeText={setTrainingText} multiline maxLength={4000} placeholder="Beskriv hva slags trening hesten skal ha"/><Text style={styles.help}>En lagring her gjelder bare valgt dato og overstyrer eventuell fast avtale.</Text>{!!assignmentError&&<Text style={styles.help}>{assignmentError}</Text>}<View style={styles.row}><Btn title="Lagre hest og trening" disabled={assignmentLoading||assignmentLoadFailed} onPress={saveHorseAssignment}/><Btn title="Fjern hestefordeling" danger onPress={removeHorseAssignment}/></View>
 
-    </Section>
+    </Section></View>
 
-    <Section title="Oppgaver">
+    <View style={{display:adminPanel==='tasks'?'flex':'none'}}><Section title="Oppgaver">
       <Text style={styles.help}>Velg rytter, hest og dato for å legge til eller fjerne oppgaver.</Text>
-      <Dropdown label="Fôrrytter for oppgaver" value={selectedUser} onChange={setSelectedUser} options={memberOptions(members)}/>
-      <Dropdown label="Hest for oppgaver" value={selectedHorse} onChange={setSelectedHorse} options={horseOptions(horses)}/>
-      <CalendarPicker value={taskDate} onChange={setTaskDate}/>
+      <Dropdown label="Fôrrytter for oppgaver" value={taskUser} onChange={setTaskUser} options={memberOptions(members)}/>
+      <Dropdown label="Hest for oppgaver" value={taskHorse} onChange={setTaskHorse} options={horseOptions(horses)}/>
+      <CalendarPicker value={tasksDate} onChange={setTasksDate}/>
       <View style={styles.divider}/>
       <Text style={styles.bold}>Fem faste standardoppgaver</Text>
       {STANDARD_TASKS.map(title=><Text key={title} style={styles.help}>○ {title}</Text>)}
       <Text style={styles.help}>Opprettes automatisk når du lagrer hestetildelingen. Hver oppgave kan krysses av individuelt.</Text>
-      <Field label="Ekstra oppgave" value={taskTitle} onChangeText={setTaskTitle} placeholder="En ekstra oppgave for valgt hest, rytter og dato"/>
+      {taskUser&&taskHorse&&<View style={styles.notice}><Text style={styles.bold}>Oppgaver for {nameOf(taskUser)}</Text><Text>{horses.find(h=>h.id===taskHorse)?.name} · {formatDateLong(tasksDate)}</Text></View>}<Field label="Ekstra oppgave" value={taskTitle} onChangeText={setTaskTitle} placeholder="En ekstra oppgave for valgt hest, rytter og dato"/>
       <Btn title="Legg til oppgave" onPress={addTask}/>
-      <AdminTaskList key={[selectedUser,selectedHorse,taskDate,adminTaskRevision].join(":")} userId={selectedUser} horseId={selectedHorse} date={taskDate}/>
+      <AdminTaskList key={[taskUser,taskHorse,tasksDate,adminTaskRevision].join(":")} userId={taskUser} horseId={taskHorse} date={tasksDate}/>
 
-    </Section>
+    </Section></View>
 
-    <Section title="Hester">{horses.length?horses.map(h=><View key={h.id} style={styles.itemRow}><Text style={styles.bold}>🐴 {h.name}</Text><Btn title="Fjern" danger onPress={()=>confirmRemoveHorse(h)}/></View>):<Empty text="Ingen hester lagt inn ennå."/>}<Field label="Ny hest" value={horse} onChangeText={setHorse}/><Btn title="Legg til hest" onPress={addHorse}/><Text style={styles.help}>Samme hestenavn kan ikke legges inn to ganger.</Text></Section>
+    <View style={{display:adminPanel==='horses'?'flex':'none'}}><Section title="Hester">{horses.length?horses.map(h=><View key={h.id} style={styles.itemRow}><Text style={styles.bold}>🐴 {h.name}</Text><Btn title="Fjern" danger onPress={()=>confirmRemoveHorse(h)}/></View>):<Empty text="Ingen hester lagt inn ennå."/>}<Field label="Ny hest" value={horse} onChangeText={setHorse}/><Btn title="Legg til hest" onPress={addHorse}/><Text style={styles.help}>Samme hestenavn kan ikke legges inn to ganger.</Text></Section></View>
 
 
-    <Section title="Ny fellesbeskjed"><Field label="Beskjed" value={message} onChangeText={setMessage} multiline/><Btn title="Publiser i 24 timer" onPress={addMessage}/></Section>
+    <View style={{display:adminPanel==='messages'?'flex':'none'}}><Section title="Ny fellesbeskjed"><Field label="Beskjed" value={message} onChangeText={setMessage} multiline/><Btn title="Publiser i 24 timer" onPress={addMessage}/></Section></View>
 
-    <Section title="Legg inn fôring"><Dropdown label="1. Velg fôrrytter" value={feedUser} onChange={setFeedUser} options={memberOptions(members)}/><Text style={styles.label}>2. Velg morgen eller kveld</Text><View style={styles.choiceWrap}><Choice label="Morgenfôring" selected={shiftLabel==='Morgenfôring'} onPress={()=>setShiftLabel('Morgenfôring')}/><Choice label="Kveldsfôring" selected={shiftLabel==='Kveldsfôring'} onPress={()=>setShiftLabel('Kveldsfôring')}/></View><Text style={styles.label}>3. Velg dato</Text><CalendarPicker value={feedDate} onChange={setFeedDate}/><Btn title="Legg til fôring" onPress={addShift}/></Section>
+    <View style={{display:adminPanel==='feeding'?'flex':'none'}}><Section title="Legg inn fôring"><Dropdown label="1. Velg fôrrytter" value={feedUser} onChange={setFeedUser} options={memberOptions(members)}/><Text style={styles.label}>2. Velg morgen eller kveld</Text><View style={styles.choiceWrap}><Choice label="Morgenfôring" selected={shiftLabel==='Morgenfôring'} onPress={()=>setShiftLabel('Morgenfôring')}/><Choice label="Kveldsfôring" selected={shiftLabel==='Kveldsfôring'} onPress={()=>setShiftLabel('Kveldsfôring')}/></View><Text style={styles.label}>3. Velg dato</Text><CalendarPicker value={feedDate} onChange={setFeedDate}/><Btn title="Legg til fôring" onPress={addShift}/></Section></View>
   </>;
 }
 
