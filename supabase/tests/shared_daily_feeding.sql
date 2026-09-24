@@ -22,6 +22,12 @@ raise exception using errcode='XX000',message='Same person permitted twice';
 exception when raise_exception then null;end;
 perform public.save_daily_feeding(st,'2099-01-03',b,a,ids);
 if (select count(*) from public.feeding_shifts where stable_id=st)<>2 then raise exception 'Replacement duplicated slots';end if;
+select array_agg(id) into ids from public.feeding_shifts where stable_id=st;
+perform public.save_daily_feeding(st,'2099-01-03',b,null,ids);
+if (select count(*) from public.feeding_shifts where stable_id=st)<>1 then raise exception 'Optional second person failed';end if;
+select array_agg(id) into ids from public.feeding_shifts where stable_id=st;
+perform public.save_daily_feeding(st,'2099-01-03',b,a,ids);
+if (select count(*) from public.feeding_shifts where stable_id=st)<>2 then raise exception 'Adding second person failed';end if;
 perform set_config('request.jwt.claim.sub',b::text,true);
 if (select count(*) from public.feeding_shifts where stable_id=st and assigned_to=b)<>1 then raise exception 'Rider cannot see own full-day assignment';end if;
 begin
