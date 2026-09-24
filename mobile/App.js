@@ -65,7 +65,7 @@ const Choice = ({ label, selected, onPress }) => (
   </Pressable>
 );
 
-function CalendarPicker({ value, onChange, weekendOnly=false, markedDates=[] }) {
+function CalendarPicker({ value, onChange, weekendOnly=false, markedDates=[], onMonthChange }) {
   const selected = parseIsoDate(value);
   const [shown,setShown] = useState(new Date(selected.getFullYear(), selected.getMonth(), 1));
   useEffect(()=>{const d=parseIsoDate(value);setShown(new Date(d.getFullYear(),d.getMonth(),1));},[value]);
@@ -76,7 +76,7 @@ function CalendarPicker({ value, onChange, weekendOnly=false, markedDates=[] }) 
     const day=i-mondayOffset+1;
     return day>=1&&day<=daysInMonth ? new Date(shown.getFullYear(),shown.getMonth(),day) : null;
   });
-  const move = delta => setShown(new Date(shown.getFullYear(),shown.getMonth()+delta,1));
+  const move = delta => {const next=new Date(shown.getFullYear(),shown.getMonth()+delta,1);setShown(next);onMonthChange?.(toIsoDate(next));};
   return <View style={styles.calendar}>
     <View style={styles.calendarHeader}><Btn title="‹" secondary onPress={()=>move(-1)}/><Text style={styles.calendarTitle}>{monthTitle(shown)}</Text><Btn title="›" secondary onPress={()=>move(1)}/></View>
     <View style={styles.weekRow}>{['Man','Tir','Ons','Tor','Fre','Lør','Søn'].map(x=><Text key={x} style={styles.weekLabel}>{x}</Text>)}</View>
@@ -336,7 +336,7 @@ function TodayScreen({ userId }) {
   }
 
   return <>
-    <Section title="Min oversikt"><Text style={styles.muted}>{formatDateLong(today)} · {weekLabel(today)} · Versjon 1.7.5</Text>{error?<Text accessibilityRole="alert">{error}</Text>:null}<Btn title={busy?'Oppdaterer …':'Oppdater'} disabled={busy} secondary onPress={()=>{load();setTaskRevision(v=>v+1);}}/></Section>
+    <Section title="Min oversikt"><Text style={styles.muted}>{formatDateLong(today)} · {weekLabel(today)} · Versjon 1.7.6</Text>{error?<Text accessibilityRole="alert">{error}</Text>:null}<Btn title={busy?'Oppdaterer …':'Oppdater'} disabled={busy} secondary onPress={()=>{load();setTaskRevision(v=>v+1);}}/></Section>
     {assignments.length>0&&<Section title="Min hest i dag">{assignments.map(a=><View key={a.id}><View style={styles.horseCard}><Text style={styles.horseName}>🐴 {a.horses?.name || 'Hest'}</Text><Text>{formatDateLong(today)}</Text><TrainingText text={a.training_text}/></View><HorseDayTasks key={a.id+today+taskRevision} userId={userId} selectedDate={today}/></View>)}</Section>}
     <Section title="Neste gang jeg har hest">{nextAssignment?<><View style={styles.horseCard}><Text style={styles.horseName}>🐴 {nextAssignment.horses?.name || 'Hest'}</Text><Text>{formatDateLong(nextAssignment.assignment_date)} · {weekLabel(nextAssignment.assignment_date)}</Text><Text style={styles.muted}>{nextAssignment.origin}</Text>{!nextAssignment.recurring_id&&nextAssignment.origin!=='Godkjent hestebytte'&&<Text style={styles.help}>Treningen er lagret spesielt for denne datoen og overstyrer fast avtale.</Text>}<TrainingText text={nextAssignment.training_text}/></View><HorseDayTasks key={nextAssignment.id+nextAssignment.assignment_date+taskRevision} userId={userId} selectedDate={nextAssignment.assignment_date}/></>:<Empty text="Ingen kommende hestetildeling registrert."/>}</Section>
     {(shifts.length>0||nextShift)&&<Section title="Mine fôringer">{shifts.map(shift=><View key={shift.id} style={styles.item}><Text style={styles.bold}>I dag · {feedingLabel(shift)}</Text><Text style={styles.muted}>{formatDate(shift.shift_date)}</Text></View>)}{nextShift&&!shifts.some(shift=>shift.id===nextShift.id)&&<View style={styles.item}><Text style={styles.bold}>{feedingLabel(nextShift)}</Text><Text>{formatDateLong(nextShift.shift_date)}</Text></View>}</Section>}
@@ -351,21 +351,18 @@ function TodayScreen({ userId }) {
 }
 
 function FeedingScreen({ userId }) {
-  const [shifts,setShifts]=useState([]); const [members,setMembers]=useState([]); const [selectedDate,setSelectedDate]=useState(localDate());
-  useEffect(()=>{load();},[selectedDate]);
-  async function load(){
-    const selected=parseIsoDate(selectedDate); const from=toIsoDate(new Date(selected.getFullYear(),selected.getMonth(),1)); const to=toIsoDate(new Date(selected.getFullYear(),selected.getMonth()+1,0));
-    const [s,m]=await Promise.all([
-      supabase.from('feeding_shifts').select('*').gte('shift_date',from).lte('shift_date',to).order('shift_date').order('shift_time'),
-      supabase.from('memberships').select('user_id,role,profiles(full_name)').eq('stable_id',STABLE_ID).eq('active',true)
-    ]);
-    setShifts(s.data||[]); setMembers(m.data||[]);
-  }
-  const nameOf=id=>id?(members.find(m=>m.user_id===id)?.profiles?.full_name||'Tidligere bruker'):'Ikke fordelt';
-  const dayShifts=shifts.filter(s=>s.shift_date===selectedDate); const marked=[...new Set(shifts.map(s=>s.shift_date))];
-  return <>
-    <Section title="Fôringskalender"><CalendarPicker value={selectedDate} onChange={setSelectedDate} markedDates={marked}/><Text style={styles.sectionSmall}>{formatDateLong(selectedDate)}</Text>{dayShifts.length?dayShifts.map(s=><View key={s.id} style={styles.itemRow}><View><Text style={styles.bold}>{s.label}</Text><Text style={styles.muted}>{nameOf(s.assigned_to)}</Text></View></View>):<Empty text="Ingen morgen- eller kveldsfôring registrert denne dagen."/>}</Section>
-  </>;
+ const [shifts,setShifts]=useState([]),[members,setMembers]=useState([]),[selectedDate,setSelectedDate]=useState(localDate()),[visibleMonth,setVisibleMonth]=useState(localDate()),[busy,setBusy]=useState(false),[error,setError]=useState(''),[updated,setUpdated]=useState(null);
+ const request=useRef(0);
+ useEffect(()=>{load();const timer=setInterval(load,30000);const listener=AppState.addEventListener('change',state=>{if(state==='active')load();});const focus=()=>load();if(Platform.OS==='web')window.addEventListener('focus',focus);return()=>{request.current++;clearInterval(timer);listener.remove();if(Platform.OS==='web')window.removeEventListener('focus',focus);};},[selectedDate,visibleMonth,userId]);
+ async function load(){const id=++request.current;setBusy(true);setError('');try{
+ const selected=parseIsoDate(visibleMonth),first=toIsoDate(new Date(selected.getFullYear(),selected.getMonth(),1)),last=toIsoDate(new Date(selected.getFullYear(),selected.getMonth()+1,0));
+ const from=selectedDate<first?selectedDate:first,to=selectedDate>last?selectedDate:last;
+ const [s,m]=await Promise.all([supabase.from('feeding_shifts').select('*').eq('stable_id',STABLE_ID).gte('shift_date',from).lte('shift_date',to).order('shift_date').order('shift_time'),supabase.from('memberships').select('user_id,role,profiles(full_name)').eq('stable_id',STABLE_ID)]);
+ if(s.error)throw s.error;if(m.error)throw m.error;if(id!==request.current)return;setShifts(s.data||[]);setMembers(m.data||[]);setUpdated(new Date());
+ }catch{if(id===request.current)setError('Kunne ikke oppdatere fôringene. Listen kan være utdatert. Prøv igjen.');}finally{if(id===request.current)setBusy(false);}}
+ const nameOf=id=>id?(members.find(m=>m.user_id===id)?.profiles?.full_name||'Tidligere bruker'):'Ikke fordelt';
+ const dayShifts=shifts.filter(s=>s.shift_date===selectedDate),marked=[...new Set(shifts.map(s=>s.shift_date))];
+ return <Section title="Fôringskalender"><Btn title={busy?'Oppdaterer …':'Oppdater fôringer'} disabled={busy} secondary onPress={load}/>{!!error&&<Text accessibilityRole="alert" style={styles.help}>{error}</Text>}{updated&&<Text style={styles.help}>Sist oppdatert {updated.toLocaleTimeString('nb-NO',{hour:'2-digit',minute:'2-digit'})} · oppdateres automatisk</Text>}<CalendarPicker value={selectedDate} onChange={date=>{setSelectedDate(date);setVisibleMonth(date);}} onMonthChange={setVisibleMonth} markedDates={marked}/><Text style={styles.sectionSmall}>{formatDateLong(selectedDate)}</Text>{dayShifts.length?dayShifts.map(s=><View key={s.id} style={styles.itemRow}><View><Text style={styles.bold}>{feedingLabel(s)}</Text><Text style={styles.muted}>{nameOf(s.assigned_to)}</Text></View></View>):busy?<Text>Henter fôringer …</Text>:!error&&<Empty text="Ingen morgen- eller kveldsfôring registrert denne dagen."/>}</Section>;
 }
 
 function MessagesScreen({ isAdmin }){
