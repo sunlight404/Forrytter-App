@@ -7,6 +7,7 @@ import Dropdown from './Dropdown';
 import PasswordRecovery from './PasswordRecovery';
 import { authOptions } from './authOptions';
 import HorseSwaps from './HorseSwaps';
+import CommunityChat from './CommunityChat';
 import Notifications, { disableDeviceNotifications } from './Notifications';
 const memberOptions=members=>members.map(m=>({value:m.user_id,label:(m.profiles?.full_name||'Uten navn')+(m.active===false?' (fjernet)':'')})).sort((a,b)=>a.label.localeCompare(b.label,'nb'));
 const horseOptions=horses=>horses.map(h=>({value:h.id,label:h.name})).sort((a,b)=>a.label.localeCompare(b.label,'nb'));
@@ -101,7 +102,7 @@ export default function App() {
   const [authError,setAuthError]=useState('');
   const [recovering,setRecovering]=useState(()=>{if(Platform.OS!=='web')return false;try{return new URLSearchParams(window.location.hash.slice(1)).get('type')==='recovery'||!!new URLSearchParams(window.location.hash.slice(1)).get('error')||window.sessionStorage.getItem('forrytter-password-recovery')==='1';}catch{return false;}});
   function finishRecovery(){setRecovering(false);if(Platform.OS==='web'){try{window.sessionStorage.removeItem('forrytter-password-recovery');window.history.replaceState(null,'',window.location.pathname+window.location.search);}catch{}}}
-  const [tab, setTab] = useState(() => { const value=Platform.OS==='web'&&typeof window!=='undefined'&&window.location?new URLSearchParams(window.location.search).get('tab'):null; return ['today','horseSwaps','feeding','messages'].includes(value)?value:'today'; });
+  const [tab, setTab] = useState(() => { const value=Platform.OS==='web'&&typeof window!=='undefined'&&window.location?new URLSearchParams(window.location.search).get('tab'):null; return ['today','horseSwaps','feeding','messages','chat'].includes(value)?value:'today'; });
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
@@ -145,7 +146,7 @@ export default function App() {
   if (!membership) return <WaitingScreen identifier={session.user.email || session.user.phone || 'Ny bruker'} onRefresh={() => setRefreshKey(x => x + 1)} onLogout={async () => { try { await disableDeviceNotifications(supabase); } catch { Alert.alert('Varsler', 'Varsler kunne ikke slås av. Slå dem av i enhetens innstillinger hvis andre skal bruke enheten.'); } await supabase.auth.signOut(); }} />;
 
   const isAdmin = membership.role === 'owner' || membership.role === 'admin';
-  const tabs = isAdmin ? ['today','horseSwaps','feeding','messages','admin'] : ['today','horseSwaps','feeding','messages'];
+  const tabs = isAdmin ? ['today','horseSwaps','feeding','messages','chat','admin'] : ['today','horseSwaps','feeding','messages','chat'];
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -154,16 +155,17 @@ export default function App() {
         <View><Text style={styles.title}>Fôrrytter App</Text><Text style={styles.muted}>Stall Nordstjerna · {membership.role === 'owner' ? 'Eier' : membership.role === 'admin' ? 'Admin' : 'Fôrrytter'}</Text></View>
         <Btn title="Logg ut" secondary onPress={async () => { try { await disableDeviceNotifications(supabase); } catch { Alert.alert('Varsler', 'Varsler kunne ikke slås av. Slå dem av i enhetens innstillinger hvis andre skal bruke enheten.'); } await supabase.auth.signOut(); }} />
       </View>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
         {!!membershipError&&<Text accessibilityRole="alert">{membershipError}</Text>}
         {tab === 'today' && <TodayScreen userId={session.user.id} />}
         {tab === 'horseSwaps' && <HorseSwaps supabase={supabase} stableId={STABLE_ID} userId={session.user.id} isAdmin={isAdmin}/>}
         {tab === 'feeding' && <FeedingScreen userId={session.user.id} />}
         {tab === 'messages' && <MessagesScreen isAdmin={isAdmin} />}
+        {tab === 'chat' && <CommunityChat supabase={supabase} stableId={STABLE_ID} userId={session.user.id} isAdmin={isAdmin} />}
         {tab === 'admin' && isAdmin && <AdminScreen currentUserId={session.user.id} role={membership.role} />}
       </ScrollView>
       <View style={styles.nav}>
-        {tabs.map(t => <Pressable key={t} onPress={() => setTab(t)} style={[styles.navBtn, tab===t && styles.navActive]}><Text style={styles.navText}>{({today:'Min oversikt',horseSwaps:'Bytt hest',feeding:'Fôring',messages:'Beskjeder',admin:'Admin'})[t]}</Text></Pressable>)}
+        {tabs.map(t => <Pressable key={t} accessibilityRole="tab" accessibilityState={{selected:tab===t}} onPress={() => setTab(t)} style={[styles.navBtn, tab===t && styles.navActive]}><Text style={styles.navText}>{({today:'Min oversikt',horseSwaps:'Bytt hest',feeding:'Fôring',messages:'Beskjeder',chat:'Chat',admin:'Admin'})[t]}</Text></Pressable>)}
       </View>
     </SafeAreaView>
   );
@@ -547,7 +549,7 @@ const styles=StyleSheet.create({
   header:{padding:14,borderBottomWidth:1,borderBottomColor:'#ded9cf',backgroundColor:'#fff',flexDirection:'row',alignItems:'center',justifyContent:'space-between'},
   title:{fontSize:21,fontWeight:'800',color:'#283126'},bigTitle:{fontSize:25,fontWeight:'800',color:'#283126',textAlign:'center'},logo:{fontSize:42,textAlign:'center',marginBottom:8},
   muted:{color:'#6b746a',fontSize:13},centerMuted:{color:'#6b746a',fontSize:14,textAlign:'center',marginBottom:18},
-  content:{padding:10,paddingBottom:120},card:{backgroundColor:'#fff',borderWidth:1,borderColor:'#ded9cf',borderRadius:15,padding:12,marginBottom:10},section:{fontSize:17,fontWeight:'800',marginBottom:10,color:'#283126'},sectionSmall:{fontSize:15,fontWeight:'800',marginVertical:12,color:'#283126'},
+  content:{padding:10,paddingBottom:160},card:{backgroundColor:'#fff',borderWidth:1,borderColor:'#ded9cf',borderRadius:15,padding:12,marginBottom:10},section:{fontSize:17,fontWeight:'800',marginBottom:10,color:'#283126'},sectionSmall:{fontSize:15,fontWeight:'800',marginVertical:12,color:'#283126'},
   item:{borderWidth:1,borderColor:'#e4e0d7',borderRadius:11,padding:10,marginBottom:8},itemRow:{borderWidth:1,borderColor:'#e4e0d7',borderRadius:11,padding:10,marginBottom:8,flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:8},
   notice:{backgroundColor:'#fff2c7',padding:10,borderRadius:10,marginBottom:8},horseCard:{backgroundColor:'#eef1ec',padding:14,borderRadius:12},horseName:{fontSize:20,fontWeight:'800',color:'#283126'},bold:{fontWeight:'700',color:'#283126'},done:{textDecorationLine:'line-through',color:'#6b746a'},
   row:{flexDirection:'row',gap:8,marginTop:8,flexWrap:'wrap'},btn:{backgroundColor:'#5f7652',paddingHorizontal:13,paddingVertical:9,borderRadius:10,minHeight:38,justifyContent:'center'},btnText:{color:'#fff',fontWeight:'700',fontSize:13},btnSecondary:{backgroundColor:'#eef1ec'},btnSecondaryText:{color:'#283126'},btnDanger:{backgroundColor:'#f7e5e3'},btnDangerText:{color:'#9f3f37'},disabled:{opacity:.5},
@@ -555,7 +557,7 @@ const styles=StyleSheet.create({
   authWrap:{width:'100%',maxWidth:560,alignSelf:'center',padding:22,justifyContent:'center',flexGrow:1},centerBox:{padding:24,justifyContent:'center',alignItems:'center',flex:1,gap:10},segment:{flexDirection:'row',gap:8,marginBottom:16},
   choiceWrap:{flexDirection:'row',flexWrap:'wrap',gap:8,marginBottom:14},choice:{borderWidth:1,borderColor:'#d8d4ca',borderRadius:999,paddingHorizontal:12,paddingVertical:8,backgroundColor:'#fff'},choiceSelected:{backgroundColor:'#5f7652',borderColor:'#5f7652'},choiceText:{color:'#455443',fontWeight:'700'},choiceTextSelected:{color:'#fff'},divider:{height:1,backgroundColor:'#e4e0d7',marginVertical:14},
   calendar:{borderWidth:1,borderColor:'#e4e0d7',borderRadius:12,padding:8,marginBottom:12},calendarHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginBottom:8},calendarTitle:{fontWeight:'800',fontSize:15,color:'#283126'},weekRow:{flexDirection:'row'},weekLabel:{width:'14.285%',textAlign:'center',fontSize:11,color:'#6b746a',fontWeight:'700',paddingVertical:6},calendarGrid:{flexDirection:'row',flexWrap:'wrap'},dayCell:{width:'14.285%',height:44,alignItems:'center',justifyContent:'center',borderRadius:9},dayActive:{backgroundColor:'#5f7652'},dayDisabled:{opacity:.28},dayText:{color:'#283126',fontWeight:'600'},dayTextActive:{color:'#fff',fontWeight:'800'},dayTextDisabled:{color:'#8a8f89'},dot:{width:5,height:5,borderRadius:3,backgroundColor:'#5f7652',marginTop:2},dotActive:{backgroundColor:'#fff'},selectedDate:{fontSize:12,color:'#6b746a',marginTop:8,textAlign:'center'},
-  nav:{position:'absolute',left:0,right:0,bottom:Platform.OS==='web'?0:24,backgroundColor:'#fff',borderTopWidth:1,borderTopColor:'#ded9cf',borderBottomWidth:1,borderBottomColor:'#ded9cf',flexDirection:'row',paddingBottom:10,paddingTop:8},navBtn:{flex:1,paddingVertical:12,paddingHorizontal:8,alignItems:'center',borderRadius:10,marginHorizontal:3,minHeight:44,justifyContent:'center'},navActive:{backgroundColor:'#e9efe5'},navText:{fontSize:12,fontWeight:'700',color:'#455443'}
+  nav:{position:'absolute',left:0,right:0,bottom:Platform.OS==='web'?0:24,backgroundColor:'#fff',borderTopWidth:1,borderTopColor:'#ded9cf',borderBottomWidth:1,borderBottomColor:'#ded9cf',flexDirection:'row',flexWrap:'wrap',paddingHorizontal:3,paddingBottom:10,paddingTop:8},navBtn:{flexGrow:1,flexBasis:'30%',paddingVertical:10,paddingHorizontal:6,alignItems:'center',borderRadius:10,marginHorizontal:3,minHeight:44,justifyContent:'center'},navActive:{backgroundColor:'#e9efe5'},navText:{fontSize:12,fontWeight:'700',color:'#455443'}
 });
 
 function RecurringAgreementsAdmin({members,horses,currentUserId}) {
@@ -581,3 +583,4 @@ function AdminTaskList({userId,horseId,date}){
  if(!userId||!horseId)return null;
  return <View style={{marginTop:16}}><Text style={styles.bold}>Oppgaver for valgt hest og dato</Text><Text style={styles.help}>Fjerning gjelder bare denne rytteren, hesten og datoen. Andre hestedager beholder oppgavene sine.</Text>{!!error&&<Text accessibilityRole="alert">{error}</Text>}{loading?<Text>Henter oppgaver …</Text>:tasks.length?tasks.map(t=><View key={t.id} style={styles.item}><Text>{t.completed?'✓ ':''}{t.title}</Text><Text style={styles.muted}>{t.standard_task_key?'Standardoppgave':'Ekstraoppgave'}{t.completed?' · Fullført':''}</Text><Btn title={busy===t.id?'Fjerner …':'Fjern oppgave'} danger disabled={!!busy} onPress={()=>confirm(t)}/></View>):!error&&<Empty text="Ingen oppgaver for valgt hest og dato."/>}</View>;
 }
+

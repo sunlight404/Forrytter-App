@@ -114,3 +114,31 @@ Fanen Bytt hest lar rytteren velge egen hestedato, mottaker og mottakerens heste
 Godkjenningen skjer samlet i databasen med kontroll av tilganger, opprinnelige hester/datoer/trening, fullførte oppgaver og datokollisjoner. Trening og ekstraoppgaver følger hesten/datoen. Fem standardoppgaver opprettes per ny tildeling. Faste avtaler beholdes, og de opprinnelige datoene blokkeres fra automatisk gjenoppretting ved et bytte mellom datoer. Hvis avtalen er endret siden forespørselen, må den avslås og sendes på nytt.
 
 Migrasjonen 20260916071512_horse_swap_requests.sql er anvendt. supabase/tests/horse_swap_requests.sql tester begge byttetyper, godkjenningsrekkefølge, uendret tildeling før godkjenning, ekstraoppgaver, standardoppgaver, faste avtaler, duplikater, gjentatt godkjenning, endret trening, utførte oppgaver og fjerning av bruker. Alle testdata rulles tilbake. Versjon 1.5.0 bruker Android-kode 7.
+
+
+## Nytt i 1.9.1 – Chat for alle godkjente medlemmer
+
+Fanen **Chat** inneholder en felles gruppechat for de eksisterende stallkontoene.
+Telefonkontoer bruker samme SMS-innlogging som før og trenger ingen e-postadresse
+eller separat ChatGPT-/Sites-konto. E-postkontoer bruker sin vanlige innlogging.
+Tilgang til chatten avgjøres av aktivt stallmedlemskap og bruker-ID i databasen.
+
+Chatten viser avsender og tidspunkt. Brukeren kan slette egne meldinger, og admin
+eller eier kan moderere. Eldre meldinger kan lastes inn. Ved sendefeil beholdes
+teksten, og gjentatt sending av samme forespørsel lager ikke duplikater.
+
+Meldinger lagres i `community_messages`, adskilt fra `messages` og
+`get_tv_messages()`. Gruppechatten vises ikke på tavla og bruker ikke
+push-triggeren for tavlebeskjeder.
+
+Web eksporteres fortsatt med `npm run build:web` fra `mobile/` til `mobile/dist/`.
+Oppdater den eksisterende Expo-publikasjonen med `eas deploy --prod` fra `mobile/`
+etter eksport og innlogging i riktig Expo-konto. Dette endrer ikke hvem som
+får lese stalldata; den eksisterende telefon-/e-postinnloggingen og
+medlemskontrollen gjelder fortsatt. Ingen ekstra Sites-e-postinvitasjon brukes.
+
+Verifikasjon: 24 kodekontroller, inkludert SMS-innlogging uten e-post og sending
+til gruppechatten. Databasetesten for chatten har 14 kontroller av medlemskap,
+senderidentitet, sletting og at tavlebeskjedene er uendret. SQL-testene ruller
+alle testdata tilbake. Innlogget visuell testing og Expo-publisering krever
+separat tilgang til den eksisterende kontoen.
