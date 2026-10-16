@@ -1,6 +1,23 @@
-# Fôrrytter App 1.9.7
+# Fôrrytter App 1.9.8
 
 Mobilappen er en React Native/Expo-app med Supabase. App.js er appen som kjøres; index.html i prosjektroten er en eldre, separat demonstrasjon.
+
+## Nytt i 1.9.8 – Tydelig beskjed ved lagring av fôringsfordeling
+
+«Lagre fordeling» kan trykkes når noe mangler. Appen viser alle manglende
+personvalg med måltid og personnummer, både over knappen og i en melding
+ved trykk. Listen oppdateres når valgene fylles ut. En tidligere valgt person
+som ikke lenger er tilgjengelig, forklares også.
+
+Under henting forklares at man må vente. Ved en lesefeil vises beskjed om å
+oppdatere fôringene. Feil fra selve lagringen vises både i skjemaet og som
+melding. Knappen er bare deaktivert mens en lagring faktisk pågår.
+Fordelingen må fortsatt være to morgen, én lunsj og to kveld før den lagres.
+
+Verifikasjon: 65 kodetester, inkludert komponenttester som trykker på
+lagreknappen ved manglende felt, eldre felles dagsansvar, henting og lesefeil.
+De dekker også bekreftet lagring, dobbelttrykk og at serverfeil aldri vises
+som vellykket lagring. Ingen databaseendring. Web-eksport er kontrollert.
 
 ## Nytt i 1.9.7 – Fridager i julen
 

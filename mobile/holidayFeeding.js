@@ -9,13 +9,32 @@ export function seedHolidayPlan(date,shifts) {
   }));
 }
 
-export function validateHolidayPlan(date,plan) {
-  if (!isRedDay(date)) throw new Error('Velg en rød dag i stallkalenderen');
+export function holidayPlanIssues(date,plan,activeUserIds) {
+  if (!isRedDay(date)) return ['Velg en rød dag i stallkalenderen.'];
+  const issues=[],active=activeUserIds?new Set(activeUserIds):null;
   for (const meal of FEEDING_MEALS) {
-    const owners=plan[meal.key];
-    if (!Array.isArray(owners)||owners.length!==meal.people||owners.some(person=>!person)) throw new Error(`${meal.label}: velg ${meal.people} ${meal.people===1?'person':'personer'}`);
-    if (new Set(owners).size!==owners.length) throw new Error(`${meal.label}: velg forskjellige personer`);
+    const owners=Array.isArray(plan?.[meal.key])?plan[meal.key]:[];
+    if (owners.length>meal.people) issues.push(`${meal.label}: velg ${meal.people} ${meal.people===1?'person':'personer'}.`);
+    for (let i=0;i<meal.people;i++) {
+      const field=`${meal.label} – person ${i+1}`;
+      if (!owners[i]) issues.push(`${field}: velg en person.`);
+      else if (active&&!active.has(owners[i])) issues.push(`${field}: personen er ikke lenger tilgjengelig. Velg en annen.`);
+    }
+    const filled=owners.filter(Boolean);
+    if (new Set(filled).size!==filled.length) issues.push(`${meal.label}: velg forskjellige personer.`);
   }
+  return issues;
+}
+
+export function holidaySaveIssues({date,plan,activeUserIds,loading,error}) {
+  if (loading) return ['Henter lagrede fôringer. Vent til hentingen er ferdig, og trykk «Lagre fordeling» igjen.'];
+  if (error) return ['Lagrede fôringer kunne ikke hentes. Trykk «Oppdater fôringer» før du prøver å lagre igjen.'];
+  return holidayPlanIssues(date,plan,activeUserIds);
+}
+
+export function validateHolidayPlan(date,plan) {
+  const issues=holidayPlanIssues(date,plan);
+  if (issues.length) throw new Error(issues.join('\n'));
 }
 
 export async function saveHolidayFeeding(client,{stableId,date,plan,expected}) {

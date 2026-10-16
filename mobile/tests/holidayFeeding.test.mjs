@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {saveHolidayFeeding,seedHolidayPlan,validateHolidayPlan} from '../holidayFeeding.js';
+import {saveHolidayFeeding,seedHolidayPlan,validateHolidayPlan,holidayPlanIssues,holidaySaveIssues} from '../holidayFeeding.js';
 import {feedingDay} from '../feedingDay.js';
 
 const date='2026-12-25';
@@ -45,4 +45,33 @@ test('each meal shows its own people and requires exactly 2, 1 and 2 assignments
   assert.deepEqual(day.meals[1].assignments.map(s=>s.assigned_to),['three']);
   const incomplete=feedingDay(date,shifts.filter(s=>s.id!=='evening1'));
   assert.equal(incomplete.meals[2].missing,true);assert.equal(incomplete.meals[0].missing,false);
+});
+
+test('all missing fields are named, and each message disappears when that field is filled',()=>{
+  const incomplete={morning:['one',null],lunch:[null],evening:['one',null]};
+  assert.deepEqual(holidayPlanIssues(date,incomplete),[
+    'Morgenfôring – person 2: velg en person.',
+    'Lunsjfôring – person 1: velg en person.',
+    'Kveldsfôring – person 2: velg en person.',
+  ]);
+  assert.deepEqual(holidayPlanIssues(date,{...incomplete,lunch:['two']}),[
+    'Morgenfôring – person 2: velg en person.',
+    'Kveldsfôring – person 2: velg en person.',
+  ]);
+  assert.deepEqual(holidayPlanIssues(date,plan),[]);
+});
+
+test('a saved owner missing from the selectable members is explained instead of silently looking complete',()=>{
+  const issues=holidayPlanIssues(date,plan,['one']);
+  assert.equal(issues.length,2);
+  assert(issues[0].startsWith('Morgenfôring – person 2: personen er ikke lenger tilgjengelig.'));
+  assert(issues[1].startsWith('Kveldsfôring – person 2: personen er ikke lenger tilgjengelig.'));
+});
+
+test('loading, failed reads and complete plans have explicit save outcomes',()=>{
+  const options={date,plan,activeUserIds:['one','two']};
+  assert.match(holidaySaveIssues({...options,loading:true})[0],/Henter lagrede fôringer/);
+  assert.match(holidaySaveIssues({...options,error:'Offline'})[0],/Oppdater fôringer/);
+  assert.deepEqual(holidaySaveIssues(options),[]);
+  assert(holidaySaveIssues({...options,plan:{}}).length===5);
 });
