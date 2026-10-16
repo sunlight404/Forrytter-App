@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { AppState, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Alert } from './dialogs';
 import { CHAT_TABLE, CHAT_PAGE_SIZE, MAX_MESSAGE_LENGTH, deleteCommunityMessage, loadCommunityMessages, messageBody, messageId, sendCommunityMessage } from './communityMessages';
+import { DIRECT_TABLE, deleteDirectMessage, loadDirectMessages, sendDirectMessage } from './directMessages';
 
 function Button({ title, onPress, disabled, secondary, danger }) {
   return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress}
@@ -10,7 +11,9 @@ function Button({ title, onPress, disabled, secondary, danger }) {
   </Pressable>;
 }
 
-export default function CommunityChat({ supabase, stableId, userId, isAdmin }) {
+export default function CommunityChat({ supabase, stableId, userId, isAdmin, recipient = null, onDraftChange }) {
+  const privateChat = !!recipient;
+  const canSend = !privateChat || recipient.active;
   const [items, setItems] = useState([]), [text, setText] = useState('');
   const [loading, setLoading] = useState(true), [sending, setSending] = useState(false);
   const [error, setError] = useState(''), [sendError, setSendError] = useState('');
@@ -22,7 +25,9 @@ export default function CommunityChat({ supabase, stableId, userId, isAdmin }) {
     const id = ++request.current;
     if (!quiet) setLoading(true);
     try {
-      const result = await loadCommunityMessages(supabase, stableId, limit.current);
+      const result = privateChat
+        ? await loadDirectMessages(supabase, stableId, userId, recipient.id, limit.current)
+        : await loadCommunityMessages(supabase, stableId, limit.current);
       if (!alive.current || id !== request.current) return;
       setItems(result.items); setHasMore(result.hasMore); setError('');
     } catch {
@@ -34,8 +39,8 @@ export default function CommunityChat({ supabase, stableId, userId, isAdmin }) {
 
   useEffect(() => {
     alive.current = true; limit.current = CHAT_PAGE_SIZE; load();
-    const channel = supabase.channel(`forrytter-chat-${stableId}-${userId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: CHAT_TABLE, filter: `stable_id=eq.${stableId}` }, () => load(true))
+    const channel = supabase.channel(`forrytter-chat-${stableId}-${userId}-${recipient?.id || 'group'}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: privateChat ? DIRECT_TABLE : CHAT_TABLE, filter: `stable_id=eq.${stableId}` }, () => load(true))
       .subscribe(status => { if (status === 'SUBSCRIBED') load(true); });
     // Polling also catches deleted messages and restores updates after lost connections.
     const timer = setInterval(() => load(true), 15000);
@@ -47,18 +52,18 @@ export default function CommunityChat({ supabase, stableId, userId, isAdmin }) {
       if (Platform.OS === 'web') window.removeEventListener('focus', focus);
       supabase.removeChannel(channel);
     };
-  }, [supabase, stableId, userId]);
+  }, [supabase, stableId, userId, recipient?.id]);
 
   async function send() {
-    if (sendLock.current) return;
+    if (sendLock.current || !canSend) return;
     let body;
     try { body = messageBody(text); } catch (e) { setSendError(e.message); return; }
     sendLock.current = true; setSending(true); setSendError('');
-    if (!pendingDraft.current || pendingDraft.current.body !== body) pendingDraft.current = { id: messageId(), stable_id: stableId, sender_id: userId, body };
+    if (!pendingDraft.current || pendingDraft.current.body !== body) pendingDraft.current = { id: messageId(), stable_id: stableId, sender_id: userId, ...(privateChat ? { recipient_id: recipient.id } : {}), body };
     try {
-      await sendCommunityMessage(supabase, pendingDraft.current);
+      await (privateChat ? sendDirectMessage : sendCommunityMessage)(supabase, pendingDraft.current);
       if (!alive.current) return;
-      setText(''); pendingDraft.current = null; await load(true);
+      setText(''); onDraftChange?.(''); pendingDraft.current = null; await load(true);
     } catch {
       if (alive.current) setSendError('Meldingen kunne ikke bekreftes sendt. Teksten er beholdt. Trykk Send for å prøve igjen.');
     } finally {
@@ -70,40 +75,42 @@ export default function CommunityChat({ supabase, stableId, userId, isAdmin }) {
     if (deleting) return;
     setDeleting(id); setError('');
     try {
-      await deleteCommunityMessage(supabase, stableId, id);
+      await (privateChat ? deleteDirectMessage : deleteCommunityMessage)(supabase, stableId, id);
       if (alive.current) { setItems(xs => xs.filter(x => x.id !== id)); await load(true); }
     } catch { if (alive.current) setError('Meldingen kunne ikke fjernes. Prøv igjen.'); }
     finally { if (alive.current) setDeleting(null); }
   }
 
   function confirmRemove(item) {
-    Alert.alert('Slett melding', 'Vil du slette denne meldingen fra fellespraten?', [
+    Alert.alert('Slett melding', privateChat ? 'Vil du slette denne meldingen for begge i samtalen?' : 'Vil du slette denne meldingen fra gruppechatten?', [
       { text: 'Avbryt', style: 'cancel' }, { text: 'Slett', style: 'destructive', onPress: () => remove(item.id) },
     ]);
   }
 
   return <View>
     <View style={styles.card}>
-      <Text style={styles.title}>Gruppechat</Text>
-      <Text style={styles.help}>En felles samtale for godkjente stallmedlemmer. Du bruker den samme innloggingen som ellers i appen. Meldinger her kommer ikke på tavla.</Text>
-      <Text style={styles.label}>Ny melding til alle</Text>
-      <TextInput accessibilityLabel="Melding til fellespraten" placeholder="Skriv til de andre fôrrytterne …"
-        multiline maxLength={MAX_MESSAGE_LENGTH} editable={!sending} value={text}
-        onChangeText={value => { setText(value); setSendError(''); }} style={styles.input} />
+      <Text style={styles.title}>{privateChat ? recipient.name : 'Gruppechat'}</Text>
+      <Text style={styles.help}>{privateChat ? 'Privat samtale. Bare dere to kan lese meldingene. De kommer ikke i gruppechatten eller på tavla.' : 'En felles samtale for godkjente stallmedlemmer. Du bruker den samme innloggingen som ellers i appen. Meldinger her kommer ikke på tavla.'}</Text>
+      {!canSend && <Text style={styles.help}>Denne personen er ikke lenger et aktivt stallmedlem. Du kan lese historikken.</Text>}
+      <Text style={styles.label}>{privateChat ? 'Ny privat melding' : 'Ny melding til alle'}</Text>
+      <TextInput accessibilityLabel={privateChat ? `Privat melding til ${recipient.name}` : 'Melding til fellespraten'} placeholder={privateChat ? 'Skriv en privat melding …' : 'Skriv til de andre fôrrytterne …'}
+        multiline maxLength={MAX_MESSAGE_LENGTH} editable={!sending && canSend} value={text}
+        onChangeText={value => { setText(value); onDraftChange?.(value); setSendError(''); }} style={styles.input} />
       <View style={styles.composerActions}><Text style={styles.help}>{text.length}/{MAX_MESSAGE_LENGTH}</Text>
-        <Button title={sending ? 'Sender …' : 'Send melding'} disabled={sending || !text.trim()} onPress={send} /></View>
+        <Button title={sending ? 'Sender …' : 'Send melding'} disabled={sending || !canSend || !text.trim()} onPress={send} /></View>
       {!!sendError && <Text accessibilityRole="alert" style={styles.error}>{sendError}</Text>}
     </View>
     <View style={styles.card}>
       <View style={styles.heading}><Text style={styles.title}>Siste meldinger</Text><Button title={loading ? 'Henter …' : 'Oppdater'} secondary disabled={loading} onPress={() => load()} /></View>
       {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
       {!items.length && !loading && !error && <Text style={styles.help}>Ingen meldinger ennå. Start gjerne samtalen!</Text>}
-      {loading && !items.length && <Text style={styles.help}>Henter fellespraten …</Text>}
+      {loading && !items.length && <Text style={styles.help}>Henter samtalen …</Text>}
       {items.map(item => <View key={item.id} style={[styles.message, item.sender_id === userId && styles.ownMessage]}>
         <Text style={styles.author}>{item.sender?.full_name || 'Tidligere medlem'}{item.sender_id === userId ? ' · Deg' : ''}</Text>
         <Text style={styles.date}>{new Date(item.created_at).toLocaleString('nb-NO', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</Text>
+        {!!item.board_message_id && <Text style={styles.source}>Fra tavla · opprinnelig dato</Text>}
         <Text selectable style={styles.body}>{item.body}</Text>
-        {(item.sender_id === userId || isAdmin) && <Pressable accessibilityRole="button" accessibilityLabel="Slett melding" disabled={!!deleting} onPress={() => confirmRemove(item)} style={styles.deleteAction}><Text style={styles.deleteText}>{deleting === item.id ? 'Sletter …' : 'Slett'}</Text></Pressable>}
+        {(item.sender_id === userId || (!privateChat && isAdmin)) && <Pressable accessibilityRole="button" accessibilityLabel="Slett melding" disabled={!!deleting} onPress={() => confirmRemove(item)} style={styles.deleteAction}><Text style={styles.deleteText}>{deleting === item.id ? 'Sletter …' : 'Slett'}</Text></Pressable>}
       </View>)}
       {hasMore && <Button title="Vis eldre meldinger" secondary disabled={loading} onPress={() => { limit.current += CHAT_PAGE_SIZE; load(); }} />}
     </View>
@@ -124,7 +131,9 @@ const styles = StyleSheet.create({
   message: { padding: 13, borderWidth: 1, borderColor: '#ded9cf', borderRadius: 12, marginBottom: 10, backgroundColor: '#fafaf8' },
   ownMessage: { backgroundColor: '#f0f5ec', borderColor: '#d4decf' },
   author: { fontWeight: '800', color: '#283126' }, date: { color: '#6b746a', fontSize: 12, marginTop: 4 },
+  source: { color: '#5f7652', fontSize: 12, fontWeight: '700', marginTop: 6 },
   body: { color: '#283126', fontSize: 16, lineHeight: 24, marginTop: 9 },
   deleteAction: { alignSelf: 'flex-end', minHeight: 44, padding: 12, justifyContent: 'center' },
   deleteText: { color: '#9f3f37', fontWeight: '700' }, error: { color: '#9f3f37', lineHeight: 21, marginTop: 12 },
 });
+

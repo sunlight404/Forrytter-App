@@ -7,7 +7,7 @@ import Dropdown from './Dropdown';
 import PasswordRecovery from './PasswordRecovery';
 import { authOptions } from './authOptions';
 import HorseSwaps from './HorseSwaps';
-import CommunityChat from './CommunityChat';
+import ChatScreen from './ChatScreen';
 import Notifications, { disableDeviceNotifications } from './Notifications';
 const memberOptions=members=>members.map(m=>({value:m.user_id,label:(m.profiles?.full_name||'Uten navn')+(m.active===false?' (fjernet)':'')})).sort((a,b)=>a.label.localeCompare(b.label,'nb'));
 const horseOptions=horses=>horses.map(h=>({value:h.id,label:h.name})).sort((a,b)=>a.label.localeCompare(b.label,'nb'));
@@ -161,7 +161,7 @@ export default function App() {
         {tab === 'horseSwaps' && <HorseSwaps supabase={supabase} stableId={STABLE_ID} userId={session.user.id} isAdmin={isAdmin}/>}
         {tab === 'feeding' && <FeedingScreen userId={session.user.id} />}
         {tab === 'messages' && <MessagesScreen isAdmin={isAdmin} />}
-        {tab === 'chat' && <CommunityChat supabase={supabase} stableId={STABLE_ID} userId={session.user.id} isAdmin={isAdmin} />}
+        {tab === 'chat' && <ChatScreen supabase={supabase} stableId={STABLE_ID} userId={session.user.id} isAdmin={isAdmin} />}
         {tab === 'admin' && isAdmin && <AdminScreen currentUserId={session.user.id} role={membership.role} />}
       </ScrollView>
       <View style={styles.nav}>
@@ -583,4 +583,5 @@ function AdminTaskList({userId,horseId,date}){
  if(!userId||!horseId)return null;
  return <View style={{marginTop:16}}><Text style={styles.bold}>Oppgaver for valgt hest og dato</Text><Text style={styles.help}>Fjerning gjelder bare denne rytteren, hesten og datoen. Andre hestedager beholder oppgavene sine.</Text>{!!error&&<Text accessibilityRole="alert">{error}</Text>}{loading?<Text>Henter oppgaver …</Text>:tasks.length?tasks.map(t=><View key={t.id} style={styles.item}><Text>{t.completed?'✓ ':''}{t.title}</Text><Text style={styles.muted}>{t.standard_task_key?'Standardoppgave':'Ekstraoppgave'}{t.completed?' · Fullført':''}</Text><Btn title={busy===t.id?'Fjerner …':'Fjern oppgave'} danger disabled={!!busy} onPress={()=>confirm(t)}/></View>):!error&&<Empty text="Ingen oppgaver for valgt hest og dato."/>}</View>;
 }
+
 

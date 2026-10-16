@@ -1,7 +1,7 @@
 export const CHAT_TABLE = 'community_messages';
 export const MAX_MESSAGE_LENGTH = 2000;
 export const CHAT_PAGE_SIZE = 50;
-const fields = 'id,stable_id,sender_id,body,created_at,sender:profiles!community_messages_sender_id_fkey(full_name)';
+const fields = 'id,stable_id,sender_id,body,created_at,board_message_id,sender:profiles!community_messages_sender_id_fkey(full_name)';
 
 export function messageBody(text) {
   const body = String(text || '').trim();
@@ -43,3 +43,4 @@ export async function deleteCommunityMessage(client, stableId, id) {
   if (error) throw error;
   if (!data) throw new Error('Meldingen kunne ikke fjernes.');
 }
+

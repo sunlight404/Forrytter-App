@@ -1,6 +1,32 @@
-# Fôrrytter App 1.5.0 – testversjon
+# Fôrrytter App 1.9.2
 
 Mobilappen er en React Native/Expo-app med Supabase. App.js er appen som kjøres; index.html i prosjektroten er en eldre, separat demonstrasjon.
+
+## Nytt i 1.9.2 – Tavlehistorikk og private samtaler
+
+Chat har valgene **Gruppechat** og **Privat · én til én**. Private samtaler startes
+ved å velge et aktivt stallmedlem ved navn. Like navn skilles med en profil-ID.
+Brukerne beholder samme telefon-/SMS- eller e-postinnlogging.
+
+`direct_messages` lagrer private meldinger med avsender og mottaker. RLS tillater
+lesing bare for de to deltakerne med aktiv stalltilgang, uten administratorunntak.
+Bare avsender kan slette sin egen melding, og da slettes den for begge. Sending
+krever at mottakeren fortsatt er aktiv i samme stall. Historikk kan leses av en
+fortsatt aktiv deltaker etter at den andre har forlatt stallen.
+
+Migrasjonen `20261016171821_private_chat_and_board_history.sql` kopierer alle
+lagrede tavlebeskjeder for Stall Nordstjerna til gruppechatten én gang, inkludert
+utløpte/inaktive beskjeder. Tekst, avsender og opprinnelig dato bevares.
+`board_message_id` hindrer duplikater og kan ikke settes av klienter. Importen
+oppdaterer ikke tavla og sender ingen nye pushvarsler. Nye chatmeldinger speiles
+ikke tilbake til tavla. Private meldinger vises heller ikke i gruppechatten.
+
+Kontroller: `npm test` tester sending, innboks, toveis samtaler, paginering,
+navnelikhet, retry og feilhåndtering. `supabase/tests/private_chat.sql` har 22
+databasekontroller og ruller alle testdata tilbake. Den verifiserer blant annet
+at mottaker kan svare, at uvedkommende administrator ikke kan lese samtalen,
+og at tilbakekalt medlemskap sperrer tilgang. Gruppechatens 14 eksisterende
+databasekontroller beholdes. Web bygges med `npm run build:web` fra `mobile/`.
 
 ## Nytt i 1.3.0
 
@@ -142,3 +168,4 @@ til gruppechatten. Databasetesten for chatten har 14 kontroller av medlemskap,
 senderidentitet, sletting og at tavlebeskjedene er uendret. SQL-testene ruller
 alle testdata tilbake. Innlogget visuell testing og Expo-publisering krever
 separat tilgang til den eksisterende kontoen.
+
