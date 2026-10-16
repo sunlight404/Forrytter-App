@@ -4,10 +4,10 @@ import { execFileSync } from 'node:child_process';
 import { easterSunday, holidayLabel, isRedDay, norwegianHolidays, redDaysInMonth } from '../holidays.js';
 import { feedingDay } from '../feedingDay.js';
 
-test('Norwegian fixed holidays and Sundays are red, ordinary Saturdays and eves are not',()=>{
-  for(const date of ['2026-01-01','2026-05-01','2026-05-17','2026-12-25','2026-12-26','2026-10-18'])assert.equal(isRedDay(date),true,date);
-  for(const date of ['2026-10-17','2026-12-24','2026-12-31','2026-05-08'])assert.equal(isRedDay(date),false,date);
-  assert.equal(holidayLabel('2026-10-18'),'Søndag');
+test('Norwegian fixed holidays are red, ordinary weekends and eves are not',()=>{
+  for(const date of ['2026-01-01','2026-05-01','2026-05-17','2026-12-25','2026-12-26'])assert.equal(isRedDay(date),true,date);
+  for(const date of ['2026-10-17','2026-10-18','2026-03-29','2026-12-24','2026-12-31','2026-05-08'])assert.equal(isRedDay(date),false,date);
+  assert.equal(holidayLabel('2026-10-18'),'');
   assert.equal(holidayLabel('2026-12-25'),'Første juledag');
   assert.equal(isRedDay('2026-02-30'),false);assert.equal(isRedDay(''),false);
 });
@@ -31,6 +31,24 @@ test('every red day has morning, lunch and evening needs even before assignment'
   assert.deepEqual(plan.meals.map(meal=>meal.label),['Morgenfôring','Lunsjfôring','Kveldsfôring']);
   assert(plan.meals.every(meal=>meal.missing&&meal.assignments.length===0));
   assert.equal(feedingDay('2026-10-16',[]).meals.length,0);
+});
+
+test('ordinary Sundays create no automatic needs or missing-day entries, but named Sunday holidays do',()=>{
+  assert.equal(feedingDay('2026-10-18',[]).meals.length,0);
+  assert.deepEqual(redDaysInMonth(2026,10),[]);
+  for(const date of ['2026-04-05','2026-05-17','2026-05-24']){
+    const plan=feedingDay(date,[]);assert.equal(plan.meals.length,3,date);
+    assert(plan.meals.every(meal=>meal.missing),date);
+  }
+});
+
+test('saved Sunday daily owners and individual shifts are preserved',()=>{
+  const date='2026-10-18';
+  const daily={id:'daily',shift_date:date,daily_slot:1,assigned_to:'rider'};
+  const individual={id:'morning',shift_date:date,label:'Morgenfôring',assigned_to:'other'};
+  const plan=feedingDay(date,[daily]);
+  assert.equal(plan.meals.length,3);assert(plan.meals.every(meal=>!meal.missing&&meal.assignments[0]===daily));
+  assert.deepEqual(feedingDay(date,[individual]),{meals:[],extras:[individual]});
 });
 
 test('one or two saved daily owners cover all three feedings without manufacturing assignments',()=>{

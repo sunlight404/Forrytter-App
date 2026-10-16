@@ -85,7 +85,7 @@ function CalendarPicker({ value, onChange, weekendOnly=false, markedDates=[], on
   const move = delta => {const next=new Date(shown.getFullYear(),shown.getMonth()+delta,1);setShown(next);onMonthChange?.(toIsoDate(next));};
   return <View style={styles.calendar}>
     <View style={styles.calendarHeader}><Btn title="‹" secondary onPress={()=>move(-1)}/><Text style={styles.calendarTitle}>{monthTitle(shown)}</Text><Btn title="›" secondary onPress={()=>move(1)}/></View>
-    <View style={styles.weekRow}>{['Man','Tir','Ons','Tor','Fre','Lør','Søn'].map(x=><Text key={x} style={[styles.weekLabel,x==='Søn'&&styles.redDayText]}>{x}</Text>)}</View>
+    <View style={styles.weekRow}>{['Man','Tir','Ons','Tor','Fre','Lør','Søn'].map(x=><Text key={x} style={styles.weekLabel}>{x}</Text>)}</View>
     <View style={styles.calendarGrid}>{cells.map((d,i)=>{
       if(!d) return <View key={i} style={styles.dayCell}/>;
       const iso=toIsoDate(d); const isWeekend=d.getDay()===0||d.getDay()===6; const disabled=weekendOnly&&!isWeekend;
@@ -97,7 +97,7 @@ function CalendarPicker({ value, onChange, weekendOnly=false, markedDates=[], on
     })}</View>
     <Text style={styles.selectedDate}>Valgt: {formatDateLong(value)} · {weekLabel(value)}</Text>
     {!!holidayLabel(value)&&<Text style={styles.redDayLabel}>{holidayLabel(value)}</Text>}
-    <Text style={styles.calendarLegend}>Rød dato: søndag eller norsk hellig-/høytidsdag.</Text>
+    <Text style={styles.calendarLegend}>Rød dato: norsk hellig-/høytidsdag. Vanlige søndager er ikke med.</Text>
   </View>;
 }
 

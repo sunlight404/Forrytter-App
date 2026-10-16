@@ -1,4 +1,5 @@
-// Norwegian national holidays plus Sundays. Calendar dates are ISO date strings;
+// Named Norwegian public holidays; ordinary Sundays are excluded by stall policy.
+// Calendar dates are ISO date strings;
 // UTC is used only for calendar arithmetic, never to convert a user's local day.
 const cache = new Map();
 const iso = date => `${date.getUTCFullYear()}-${String(date.getUTCMonth()+1).padStart(2,'0')}-${String(date.getUTCDate()).padStart(2,'0')}`;
@@ -23,7 +24,7 @@ export function norwegianHolidays(year) {
   const easter=parse(easterSunday(year)),days={};
   const add=(date,name)=>{days[date]=days[date]?`${days[date]} / ${name}`:name;};
   for (const [month,day,name] of [[1,1,'Første nyttårsdag'],[5,1,'Arbeidernes dag'],[5,17,'Grunnlovsdagen'],[12,25,'Første juledag'],[12,26,'Andre juledag']]) add(`${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`,name);
-  for (const [offset,name] of [[-7,'Palmesøndag'],[-3,'Skjærtorsdag'],[-2,'Langfredag'],[0,'Første påskedag'],[1,'Andre påskedag'],[39,'Kristi himmelfartsdag'],[49,'Første pinsedag'],[50,'Andre pinsedag']]) {
+  for (const [offset,name] of [[-3,'Skjærtorsdag'],[-2,'Langfredag'],[0,'Første påskedag'],[1,'Andre påskedag'],[39,'Kristi himmelfartsdag'],[49,'Første pinsedag'],[50,'Andre pinsedag']]) {
     const date=new Date(easter);date.setUTCDate(date.getUTCDate()+offset);add(iso(date),name);
   }
   const result=Object.freeze(days);cache.set(year,result);return result;
@@ -31,7 +32,7 @@ export function norwegianHolidays(year) {
 
 export function holidayLabel(value) {
   const date=parse(value);if (!date || date.getUTCFullYear()<1583) return '';
-  return norwegianHolidays(date.getUTCFullYear())[value] || (date.getUTCDay()===0?'Søndag':'');
+  return norwegianHolidays(date.getUTCFullYear())[value] || '';
 }
 export const isRedDay = value => !!holidayLabel(value);
 

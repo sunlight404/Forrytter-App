@@ -1,15 +1,19 @@
-# Fôrrytter App 1.9.4
+# Fôrrytter App 1.9.5
 
 Mobilappen er en React Native/Expo-app med Supabase. App.js er appen som kjøres; index.html i prosjektroten er en eldre, separat demonstrasjon.
 
-## Nytt i 1.9.4 – Røde dager og tre fôringer
+## Nytt i 1.9.5 – Tre fôringer bare på hellig-/høytidsdager
 
-Kalenderen markerer norske hellig-/høytidsdager og alle søndager rødt, med navn
+Kalenderen markerer norske hellig-/høytidsdager rødt, med navn
 på den valgte dagen. Påske, Kristi himmelfart og pinse beregnes for kalenderåret.
-Høytider som faller på samme dato, vises samlet. Skoleferier, julaften og
-nyttårsaften er ikke egne røde dager med mindre de faller på en søndag.
-Helligdagslisten følger [helligdagsfredloven](https://lovdata.no/nav/lov/1995-02-24-12)
-og [loven om 1. og 17. mai](https://lovdata.no/nav/lov/1947-04-26-1).
+Høytider som faller på samme dato, vises samlet. Vanlige søndager og
+palmesøndag utløser ikke automatisk fôringsbehov. Første påske- og pinsedag
+og øvrige navngitte høytidsdager er med også når de faller på en søndag.
+Skoleferier, julaften og nyttårsaften er ikke egne røde dager.
+Listen bruker de navngitte hellig-/høytidsdagene i
+[helligdagsfredloven](https://lovdata.no/nav/lov/1995-02-24-12) og
+[loven om 1. og 17. mai](https://lovdata.no/nav/lov/1947-04-26-1), med stallens
+avgrensning til disse dagene i stedet for alle søndager.
 
 Fôringskalenderen viser morgen, lunsj og kveld på alle røde dager, også før
 ansvarlige er valgt. Manglende fordeling merkes tydelig. Admin får en liste
@@ -21,8 +25,9 @@ tildeles automatisk. Individuelle fôringer og ekstraregistreringer bevares.
 Fôringsbehov beregnes fra datoen, mens navnene følger lagrede vakter. Dette
 krever ingen ny databasemigrasjon og endrer ikke eksisterende fôringsavtaler.
 
-Verifikasjon: 47 kodetester, inkludert helligdager, tidssoner, overlappende
-høytider og korrekt fordeling av alle tre fôringer. Seks databasekontroller i
+Verifikasjon: 49 kodetester, inkludert helligdager, tidssoner, overlappende
+høytider, søndager uten automatiske behov og bevaring av lagrede søndagsvakter.
+Seks databasekontroller fra versjon 1.9.4 i
 `supabase/tests/holiday_feeding.sql` verifiserer lagring på en helligdag i uken,
 felles ansvar, beskyttelse mot utdaterte lagringer og adminrettigheter.
 Alle testdata rulles tilbake. Web-eksport er kontrollert.
