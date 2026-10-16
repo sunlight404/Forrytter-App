@@ -1,6 +1,32 @@
-# Fôrrytter App 1.9.5
+# Fôrrytter App 1.9.6
 
 Mobilappen er en React Native/Expo-app med Supabase. App.js er appen som kjøres; index.html i prosjektroten er en eldre, separat demonstrasjon.
+
+## Nytt i 1.9.6 – To morgen, én lunsj og to kveld på helligdager
+
+På hellig-/høytidsdager fordeler admin personer per måltid: to til morgen,
+én til lunsj og to til kveld. Samme person kan ha flere måltider. Dermed kan
+to personer dekke hele dagen; en tredje person til lunsj er valgfri.
+Vanlige søndager er ikke med. Vanlige dagers dagsansvar med én/to personer
+fungerer som før.
+
+Fôringer viser riktige navn og antall per måltid. Tidligere lagret dagsansvar
+bevares frem til admin bekrefter at det skal erstattes. Ved to eldre
+felles dagsansvar velger appen ingen lunsjperson automatisk.
+
+`save_holiday_feeding` lagrer fem måltidsvakter i én transaksjon. Databasen
+kontrollerer 2/1/2 personer, forskjellige personer innen samme måltid,
+aktivt medlemskap, adminrettigheter og helligdagsdato. Den avviser utdaterte
+lagringer og gamle appversjoners forsøk på å overskrive helligdager med
+felles dagsansvar. `meal` og `meal_slot` skiller måltid og plass; eksisterende
+RLS og innlogging gjelder fortsatt. Ingen reelle vakter flyttes automatisk.
+
+Verifikasjon: 55 kodetester og syv isolerte databasefaser i
+`supabase/tests/holiday_feeding.sql`, med alle testdata rullet tilbake.
+De dekker gjenbruk av personer, valgfri tredje, riktig antall, ugyldige valg,
+helligdagsgrense, medlemskap, samtidige endringer, eldre appversjoner og
+bevaring av vanlige søndager. De opprinnelige 45 vaktene er uendret.
+Web-eksport er kontrollert.
 
 ## Nytt i 1.9.5 – Tre fôringer bare på hellig-/høytidsdager
 

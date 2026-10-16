@@ -7,9 +7,10 @@ import { holidayLabel } from './holidays';
 export default function FeedingDay({date,shifts,nameOf,loading,error}) {
   const plan=feedingDay(date,shifts),holiday=holidayLabel(date);
   return <View>
-    {!!holiday && <View style={styles.holiday}><Text style={styles.holidayTitle}>Rød dag · {holiday}</Text><Text style={styles.help}>Morgen, lunsj og kveld skal fordeles denne dagen.</Text></View>}
+    {!!holiday && <View style={styles.holiday}><Text style={styles.holidayTitle}>Rød dag · {holiday}</Text><Text style={styles.help}>Morgen: 2 personer · Lunsj: 1 person · Kveld: 2 personer.</Text></View>}
     {plan.meals.map(meal=><View key={meal.key} style={[styles.card,meal.missing&&!loading&&!error&&styles.missing]}>
       <Text style={styles.title}>{meal.label}</Text>
+      {!!meal.required&&!loading&&!error&&<Text style={styles.help}>{meal.assignedCount} av {meal.required} personer fordelt{meal.overAssigned?' · Fordelingen må oppdateres.':''}</Text>}
       {loading?<Text style={styles.help}>Henter ansvarlige …</Text>:error?<Text style={styles.help}>Ansvarlige kunne ikke bekreftes. Oppdater fôringene.</Text>:meal.assignments.length?meal.assignments.map(shift=><Text key={shift.id} style={!shift.assigned_to?styles.unassigned:styles.person}>{nameOf(shift.assigned_to)}</Text>):<Text style={styles.unassigned}>Ikke fordelt</Text>}
     </View>)}
     {plan.extras.map(shift=><View key={shift.id} style={styles.card}><Text style={styles.title}>{feedingLabel(shift)}</Text><Text style={styles.person}>{nameOf(shift.assigned_to)}</Text></View>)}

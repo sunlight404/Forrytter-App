@@ -51,19 +51,19 @@ test('saved Sunday daily owners and individual shifts are preserved',()=>{
   assert.deepEqual(feedingDay(date,[individual]),{meals:[],extras:[individual]});
 });
 
-test('one or two saved daily owners cover all three feedings without manufacturing assignments',()=>{
+test('older daily owners are preserved and holiday meals flag missing or excessive allocation',()=>{
   const first={id:'one',shift_date:'2026-12-25',daily_slot:1,assigned_to:'rider-one'};
   const second={id:'two',shift_date:'2026-12-25',daily_slot:2,assigned_to:'rider-two'};
-  for(const shifts of [[first],[first,second]]){
-    const plan=feedingDay('2026-12-25',shifts);assert(plan.meals.every(meal=>!meal.missing&&meal.assignments.length===shifts.length));
-  }
+  const alone=feedingDay('2026-12-25',[first]);assert.deepEqual(alone.meals.map(m=>m.missing),[true,false,true]);
+  const shared=feedingDay('2026-12-25',[first,second]);assert.deepEqual(shared.meals.map(m=>m.missing),[false,true,false]);
+  assert(shared.meals.every(m=>m.assignments.length===2));
   const partial=feedingDay('2026-12-25',[first,{...second,assigned_to:null}]);assert(partial.meals.every(meal=>meal.missing));
   assert.equal(feedingDay('2026-12-26',[first,second]).meals[0].assignments.length,0);
 });
 
 test('existing individual shifts and extra feeding notes are preserved and only missing meals are unassigned',()=>{
   const shifts=[{id:'a',shift_date:'2026-12-25',label:'Morgenfôring',assigned_to:'a'},{id:'b',shift_date:'2026-12-25',label:'Kveldsfôring',assigned_to:'b'},{id:'extra',shift_date:'2026-12-25',label:'Ekstra fôr til hest',assigned_to:'c'}];
-  const plan=feedingDay('2026-12-25',shifts);assert.equal(plan.meals[0].missing,false);assert.equal(plan.meals[1].missing,true);assert.equal(plan.meals[2].missing,false);
+  const plan=feedingDay('2026-12-25',shifts);assert(plan.meals.every(m=>m.missing));assert.equal(plan.meals[0].assignedCount,1);assert.equal(plan.meals[2].assignedCount,1);
   assert.equal(plan.extras[0].id,'extra');assert.equal(shifts.length,3);
 });
 
