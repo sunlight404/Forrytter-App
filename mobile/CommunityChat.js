@@ -3,6 +3,7 @@ import { AppState, Platform, Pressable, StyleSheet, Text, TextInput, View } from
 import { Alert } from './dialogs';
 import { CHAT_TABLE, CHAT_PAGE_SIZE, MAX_MESSAGE_LENGTH, deleteCommunityMessage, loadCommunityMessages, messageBody, messageId, sendCommunityMessage } from './communityMessages';
 import { DIRECT_TABLE, deleteDirectMessage, loadDirectMessages, sendDirectMessage } from './directMessages';
+import { HeartsProvider, MessageHeart } from './MessageHearts';
 
 function Button({ title, onPress, disabled, secondary, danger }) {
   return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress}
@@ -105,13 +106,16 @@ export default function CommunityChat({ supabase, stableId, userId, isAdmin, rec
       {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
       {!items.length && !loading && !error && <Text style={styles.help}>Ingen meldinger ennå. Start gjerne samtalen!</Text>}
       {loading && !items.length && <Text style={styles.help}>Henter samtalen …</Text>}
+      <HeartsProvider supabase={supabase} userId={userId} kind={privateChat ? 'direct' : 'community'} messages={items}>
       {items.map(item => <View key={item.id} style={[styles.message, item.sender_id === userId && styles.ownMessage]}>
         <Text style={styles.author}>{item.sender?.full_name || 'Tidligere medlem'}{item.sender_id === userId ? ' · Deg' : ''}</Text>
         <Text style={styles.date}>{new Date(item.created_at).toLocaleString('nb-NO', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</Text>
         {!!item.board_message_id && <Text style={styles.source}>Fra tavla · opprinnelig dato</Text>}
         <Text selectable style={styles.body}>{item.body}</Text>
+        <MessageHeart messageId={item.id}/>
         {(item.sender_id === userId || (!privateChat && isAdmin)) && <Pressable accessibilityRole="button" accessibilityLabel="Slett melding" disabled={!!deleting} onPress={() => confirmRemove(item)} style={styles.deleteAction}><Text style={styles.deleteText}>{deleting === item.id ? 'Sletter …' : 'Slett'}</Text></Pressable>}
       </View>)}
+      </HeartsProvider>
       {hasMore && <Button title="Vis eldre meldinger" secondary disabled={loading} onPress={() => { limit.current += CHAT_PAGE_SIZE; load(); }} />}
     </View>
   </View>;

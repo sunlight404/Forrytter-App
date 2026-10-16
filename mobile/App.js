@@ -8,6 +8,8 @@ import PasswordRecovery from './PasswordRecovery';
 import { authOptions } from './authOptions';
 import HorseSwaps from './HorseSwaps';
 import ChatScreen from './ChatScreen';
+import { HeartsProvider, MessageHeart } from './MessageHearts';
+import appConfig from './app.json';
 import Notifications, { disableDeviceNotifications } from './Notifications';
 const memberOptions=members=>members.map(m=>({value:m.user_id,label:(m.profiles?.full_name||'Uten navn')+(m.active===false?' (fjernet)':'')})).sort((a,b)=>a.label.localeCompare(b.label,'nb'));
 const horseOptions=horses=>horses.map(h=>({value:h.id,label:h.name})).sort((a,b)=>a.label.localeCompare(b.label,'nb'));
@@ -160,7 +162,7 @@ export default function App() {
         {tab === 'today' && <TodayScreen userId={session.user.id} />}
         {tab === 'horseSwaps' && <HorseSwaps supabase={supabase} stableId={STABLE_ID} userId={session.user.id} isAdmin={isAdmin}/>}
         {tab === 'feeding' && <FeedingScreen userId={session.user.id} />}
-        {tab === 'messages' && <MessagesScreen isAdmin={isAdmin} />}
+        {tab === 'messages' && <MessagesScreen isAdmin={isAdmin} userId={session.user.id} />}
         {tab === 'chat' && <ChatScreen supabase={supabase} stableId={STABLE_ID} userId={session.user.id} isAdmin={isAdmin} />}
         {tab === 'admin' && isAdmin && <AdminScreen currentUserId={session.user.id} role={membership.role} />}
       </ScrollView>
@@ -338,7 +340,7 @@ function TodayScreen({ userId }) {
   }
 
   return <>
-    <Section title="Min oversikt"><Text style={styles.muted}>{formatDateLong(today)} · {weekLabel(today)} · Versjon 1.8.1</Text>{error?<Text accessibilityRole="alert">{error}</Text>:null}<Btn title={busy?'Oppdaterer …':'Oppdater'} disabled={busy} secondary onPress={()=>{load();setTaskRevision(v=>v+1);}}/></Section>
+    <Section title="Min oversikt"><Text style={styles.muted}>{formatDateLong(today)} · {weekLabel(today)} · Versjon {appConfig.expo.version}</Text>{error?<Text accessibilityRole="alert">{error}</Text>:null}<Btn title={busy?'Oppdaterer …':'Oppdater'} disabled={busy} secondary onPress={()=>{load();setTaskRevision(v=>v+1);}}/></Section>
     {assignments.length>0&&<Section title="Min hest i dag">{assignments.map(a=><View key={a.id}><View style={styles.horseCard}><Text style={styles.horseName}>🐴 {a.horses?.name || 'Hest'}</Text><Text>{formatDateLong(today)}</Text><TrainingText text={a.training_text}/></View><HorseDayTasks key={a.id+today+taskRevision} userId={userId} selectedDate={today}/></View>)}</Section>}
     <Section title="Neste gang jeg har hest">{nextAssignment?<><View style={styles.horseCard}><Text style={styles.horseName}>🐴 {nextAssignment.horses?.name || 'Hest'}</Text><Text>{formatDateLong(nextAssignment.assignment_date)} · {weekLabel(nextAssignment.assignment_date)}</Text><Text style={styles.muted}>{nextAssignment.origin}</Text>{!nextAssignment.recurring_id&&nextAssignment.origin!=='Godkjent hestebytte'&&<Text style={styles.help}>Treningen er lagret spesielt for denne datoen og overstyrer fast avtale.</Text>}<TrainingText text={nextAssignment.training_text}/></View><HorseDayTasks key={nextAssignment.id+nextAssignment.assignment_date+taskRevision} userId={userId} selectedDate={nextAssignment.assignment_date}/></>:<Empty text="Ingen kommende hestetildeling registrert."/>}</Section>
     {(shifts.length>0||nextShift)&&<Section title="Mine fôringer">{shifts.map(shift=><View key={shift.id} style={styles.item}><Text style={styles.bold}>I dag · {feedingLabel(shift)}</Text><Text style={styles.muted}>{formatDate(shift.shift_date)}</Text></View>)}{nextShift&&!shifts.some(shift=>shift.id===nextShift.id)&&<View style={styles.item}><Text style={styles.bold}>{feedingLabel(nextShift)}</Text><Text>{formatDateLong(nextShift.shift_date)}</Text></View>}</Section>}
@@ -348,7 +350,7 @@ function TodayScreen({ userId }) {
     <Section title="Oppgaver på andre datoer"><Btn title={showCalendar?'Skjul kalender':'Velg en annen dato'} secondary onPress={()=>setShowCalendar(v=>!v)}/>{showCalendar&&<><CalendarPicker value={selectedDate} onChange={setSelectedDate}/><HorseDayTasks key={selectedDate+taskRevision} userId={userId} selectedDate={selectedDate} showHorse/></>}</Section>
     <Notifications supabase={supabase} stableId={STABLE_ID} userId={userId}/>
     </>}
-    {messages.length>0&&<Section title="Beskjeder">{messages.length?messages.map(x=><View key={x.id} style={styles.notice}><Text>{x.text}</Text></View>):<Empty text="Ingen nye beskjeder."/>}</Section>}
+    {messages.length>0&&<Section title="Beskjeder"><HeartsProvider supabase={supabase} userId={userId} kind="board" messages={messages}>{messages.map(x=><View key={x.id} style={styles.notice}><Text>{x.text}</Text><MessageHeart messageId={x.id}/></View>)}</HeartsProvider></Section>}
   </>;
 }
 
@@ -367,7 +369,7 @@ function FeedingScreen({ userId }) {
  return <Section title="Fôringskalender"><Btn title={busy?'Oppdaterer …':'Oppdater fôringer'} disabled={busy} secondary onPress={load}/>{!!error&&<Text accessibilityRole="alert" style={styles.help}>{error}</Text>}{updated&&<Text style={styles.help}>Sist oppdatert {updated.toLocaleTimeString('nb-NO',{hour:'2-digit',minute:'2-digit'})} · oppdateres automatisk</Text>}<CalendarPicker value={selectedDate} onChange={date=>{setSelectedDate(date);setVisibleMonth(date);}} onMonthChange={setVisibleMonth} markedDates={marked}/><Text style={styles.sectionSmall}>{formatDateLong(selectedDate)}</Text>{dayShifts.length?<>{dayShifts.some(s=>s.daily_slot)&&<View style={styles.item}><Text style={styles.bold}>Dagsansvar: morgen, lunsj og kveld</Text>{dayShifts.filter(s=>s.daily_slot).map(s=><Text key={s.id}>{nameOf(s.assigned_to)}</Text>)}</View>}{dayShifts.filter(s=>!s.daily_slot).map(s=><View key={s.id} style={styles.item}><Text style={styles.bold}>{feedingLabel(s)}</Text><Text>{nameOf(s.assigned_to)}</Text></View>)}</>:busy?<Text>Henter fôringer …</Text>:!error&&<Empty text="Ingen morgen- eller kveldsfôring registrert denne dagen."/>}</Section>;
 }
 
-function MessagesScreen({ isAdmin }){
+function MessagesScreen({ isAdmin, userId }){
   const [items,setItems]=useState([]);
   useEffect(()=>{load();},[]);
   async function load(){const {data}=await supabase.from('messages').select('*').eq('active',true).gte('created_at',messageCutoff()).order('created_at',{ascending:false});setItems(data||[]);}
@@ -376,7 +378,7 @@ function MessagesScreen({ isAdmin }){
     if(error) return Alert.alert('Feil',error.message);
     load();
   }
-  return <Section title="Beskjeder"><Text style={styles.help}>Beskjeder vises i 24 timer.</Text>{items.length?items.map(x=><View key={x.id} style={styles.itemRow}><View style={{flex:1}}><Text>{x.text}</Text></View>{isAdmin&&<Btn title="Fjern" danger onPress={()=>removeMessage(x.id)}/>}</View>):<Empty text="Ingen aktive beskjeder."/>}</Section>;
+  return <Section title="Beskjeder"><Text style={styles.help}>Beskjeder vises i 24 timer.</Text><HeartsProvider supabase={supabase} userId={userId} kind="board" messages={items}>{items.length?items.map(x=><View key={x.id} style={styles.itemRow}><View style={{flex:1}}><Text>{x.text}</Text><MessageHeart messageId={x.id}/></View>{isAdmin&&<Btn title="Fjern" danger onPress={()=>removeMessage(x.id)}/>}</View>):<Empty text="Ingen aktive beskjeder."/>}</HeartsProvider></Section>;
 }
 
 function AdminScreen({ currentUserId, role }) {

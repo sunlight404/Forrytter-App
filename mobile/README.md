@@ -1,6 +1,26 @@
-# Fôrrytter App 1.9.2
+# Fôrrytter App 1.9.3
 
 Mobilappen er en React Native/Expo-app med Supabase. App.js er appen som kjøres; index.html i prosjektroten er en eldre, separat demonstrasjon.
+
+## Nytt i 1.9.3 – Hjerter som bekreftelse
+
+Gruppechat, private samtaler og Beskjeder har hjerteknapp, antall og **Se hvem**.
+Brukeren trykker selv for å bekrefte at meldingen er fått med. Det er ikke en
+automatisk lesekvittering. Trykk på nytt for å fjerne eget hjerte. Hjertene på
+en importert tavlebeskjed er de samme i gruppechatten og på den opprinnelige
+beskjeden i appen.
+
+Migrasjonen `20261016175038_message_hearts.sql` oppretter `message_reactions`.
+Hver bruker kan gi ett hjerte per melding, bare som seg selv. RLS følger
+tilgangen til originalmeldingen; administratorer utenfor en privat samtale
+får heller ikke se dens reaksjoner. Bare brukeren kan fjerne sitt eget hjerte.
+Sletting av en melding fjerner dens reaksjoner. Ingen TV- eller pushkobling
+legges til. Telefonnummer og e-post vises ikke i reaksjonene.
+
+Verifikasjon: 39 kodetester, web-eksport og 23 nye databasekontroller for hjerter.
+SQL-kontrollene i `supabase/tests/message_hearts.sql` ble kjørt i fem isolerte
+transaksjoner med alle testdata rullet tilbake. De dekker blant annet telling,
+lagring, av/på, duplikater, avsenderidentitet, navn og privat tilgang.
 
 ## Nytt i 1.9.2 – Tavlehistorikk og private samtaler
 
