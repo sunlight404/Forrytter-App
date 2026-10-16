@@ -146,3 +146,30 @@ do $$ declare c record;ids uuid[];begin
 end $$;
 rollback;
 select 'legacy-conversion-and-ordinary-days passed' result;
+
+-- CASE december-stable-days-off
+begin;
+create temporary table feed_test as select gen_random_uuid() s,array_agg(id order by id) u from (select id from public.profiles order by id limit 5) p;
+insert into public.stables(id,name) select s,'Isolated third holiday feeding test' from feed_test;
+insert into public.memberships(stable_id,user_id,role,active) select s,u[1],'owner',true from feed_test union all select s,person,'rider',true from feed_test,unnest(u[2:4]) person;
+grant select on feed_test to authenticated;
+set local role authenticated;
+select set_config('request.jwt.claim.sub',(select u[1]::text from feed_test),true);
+do $$ declare c record;y int;n int;d date;begin
+ select * into c from feed_test;
+ for y in 2026..2027 loop
+  for n in 24..31 loop
+   d:=make_date(y,12,n);
+   assert public.is_feeding_holiday(d),'December day missing';
+   perform public.save_holiday_feeding(c.s,d,c.u[2:3],array[c.u[2]],c.u[2:3],'{}');
+   assert (select count(*) from public.feeding_shifts where stable_id=c.s and shift_date=d and meal='morning')=2;
+   assert (select count(*) from public.feeding_shifts where stable_id=c.s and shift_date=d and meal='lunch')=1;
+   assert (select count(*) from public.feeding_shifts where stable_id=c.s and shift_date=d and meal='evening')=2;
+  end loop;
+ end loop;
+ assert not public.is_feeding_holiday('2026-12-20'),'Ordinary Sunday became red';
+ assert not public.is_feeding_holiday('2026-12-23'),'December 23 became red';
+ begin perform public.save_daily_feeding(c.s,'2026-12-24',c.u[2],c.u[3],'{}');raise exception 'Old daily save accepted';exception when raise_exception then if sqlerrm not like 'Helligdager må fordeles%' then raise;end if;end;
+end $$;
+rollback;
+select 'December 24–31 in 2026/2027: 2/1/2 saved; ordinary days unchanged; all test data rolled back' result;

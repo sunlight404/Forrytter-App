@@ -4,9 +4,9 @@ import { execFileSync } from 'node:child_process';
 import { easterSunday, holidayLabel, isRedDay, norwegianHolidays, redDaysInMonth } from '../holidays.js';
 import { feedingDay } from '../feedingDay.js';
 
-test('Norwegian fixed holidays are red, ordinary weekends and eves are not',()=>{
+test('Norwegian fixed holidays are red and ordinary weekends are not',()=>{
   for(const date of ['2026-01-01','2026-05-01','2026-05-17','2026-12-25','2026-12-26'])assert.equal(isRedDay(date),true,date);
-  for(const date of ['2026-10-17','2026-10-18','2026-03-29','2026-12-24','2026-12-31','2026-05-08'])assert.equal(isRedDay(date),false,date);
+  for(const date of ['2026-10-17','2026-10-18','2026-03-29','2026-12-20','2026-05-08'])assert.equal(isRedDay(date),false,date);
   assert.equal(holidayLabel('2026-10-18'),'');
   assert.equal(holidayLabel('2026-12-25'),'Første juledag');
   assert.equal(isRedDay('2026-02-30'),false);assert.equal(isRedDay(''),false);
@@ -67,10 +67,22 @@ test('existing individual shifts and extra feeding notes are preserved and only 
   assert.equal(plan.extras[0].id,'extra');assert.equal(shifts.length,3);
 });
 
-test('December and January red-day lists cross years cleanly and do not label school breaks as holidays',()=>{
+test('December 24–31 are red every year, including the specified Sunday, with 2/1/2 feeding needs',()=>{
+  for(const year of [2026,2027,2028]){
+    assert.deepEqual(redDaysInMonth(year,12).map(day=>day.date),Array.from({length:8},(_,i)=>`${year}-12-${24+i}`));
+    for(const day of [24,27,28,29,30,31]){
+      const date=`${year}-12-${day}`;assert(holidayLabel(date).includes('fridag i stallen'));
+      const plan=feedingDay(date,[]);assert.deepEqual(plan.meals.map(m=>m.required),[2,1,2]);assert(plan.meals.every(m=>m.missing));
+    }
+    assert.equal(isRedDay(`${year}-12-23`),false);
+  }
+  assert.equal(isRedDay('2026-12-27'),true);
+});
+
+test('December and January red-day lists cross years cleanly without marking unrelated school breaks',()=>{
   assert(redDaysInMonth(2026,12).some(day=>day.date==='2026-12-25'));
   assert(redDaysInMonth(2027,1).some(day=>day.date==='2027-01-01'));
-  assert(!redDaysInMonth(2026,12).some(day=>day.date==='2026-12-24'));
+  assert.equal(isRedDay('2027-01-02'),false);
 });
 
 test('holiday dates remain identical across Oslo, US and extreme positive time zones',()=>{

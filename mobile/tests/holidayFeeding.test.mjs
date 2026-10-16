@@ -10,6 +10,12 @@ test('2 morning, 1 lunch and 2 evening can be covered by two people; a third is 
   assert.doesNotThrow(()=>validateHolidayPlan(date,plan));
   assert.doesNotThrow(()=>validateHolidayPlan(date,{...plan,lunch:['three']}));
 });
+test('each additional December day accepts the same 2/1/2 plan',async()=>{
+  const calls=[];const client={rpc:async(name,args)=>{calls.push([name,args]);return {error:null};}};
+  for(const day of [24,27,28,29,30,31])await saveHolidayFeeding(client,{...base,date:`2026-12-${day}`});
+  assert.equal(calls.length,6);
+  assert(calls.every(([name,args])=>name==='save_holiday_feeding'&&args.p_morning.length===2&&args.p_lunch.length===1&&args.p_evening.length===2));
+});
 test('wrong counts, missing people, duplicate people within a meal and ordinary Sundays are rejected before saving',async()=>{
   let calls=0;const client={rpc:async()=>{calls++;return {error:null};}};
   for(const changed of [{morning:['one']},{morning:['one','one']},{lunch:['one','two']},{lunch:[null]},{evening:['two',null]}]){

@@ -1,7 +1,16 @@
-// Named Norwegian public holidays; ordinary Sundays are excluded by stall policy.
+// Named Norwegian public holidays and the stall's specified December days off.
+// Ordinary Sundays are excluded unless they are an explicitly listed day off.
 // Calendar dates are ISO date strings;
 // UTC is used only for calendar arithmetic, never to convert a user's local day.
 const cache = new Map();
+const stableDaysOff = Object.freeze({
+  '12-24':'Julaften · fridag i stallen',
+  '12-27':'Romjul · fridag i stallen',
+  '12-28':'Romjul · fridag i stallen',
+  '12-29':'Romjul · fridag i stallen',
+  '12-30':'Romjul · fridag i stallen',
+  '12-31':'Nyttårsaften · fridag i stallen',
+});
 const iso = date => `${date.getUTCFullYear()}-${String(date.getUTCMonth()+1).padStart(2,'0')}-${String(date.getUTCDate()).padStart(2,'0')}`;
 function parse(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return null;
@@ -32,7 +41,7 @@ export function norwegianHolidays(year) {
 
 export function holidayLabel(value) {
   const date=parse(value);if (!date || date.getUTCFullYear()<1583) return '';
-  return norwegianHolidays(date.getUTCFullYear())[value] || '';
+  return norwegianHolidays(date.getUTCFullYear())[value] || stableDaysOff[value.slice(5)] || '';
 }
 export const isRedDay = value => !!holidayLabel(value);
 

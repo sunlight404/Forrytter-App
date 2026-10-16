@@ -1,6 +1,19 @@
-# Fôrrytter App 1.9.6
+# Fôrrytter App 1.9.7
 
 Mobilappen er en React Native/Expo-app med Supabase. App.js er appen som kjøres; index.html i prosjektroten er en eldre, separat demonstrasjon.
+
+## Nytt i 1.9.7 – Fridager i julen
+
+24. og 27.–31. desember er årlige fridager i stallkalenderen og markeres rødt.
+Sammen med første og andre juledag er dermed 24.–31. desember røde dager.
+Alle har samme fordeling: to personer morgen, én til lunsj og to på kvelden.
+27. desember er med også når dagen er en søndag. Andre vanlige søndager
+blir fortsatt ikke røde automatisk. Datoene merkes som fridager i stallen.
+
+Kalenderen, listen over manglende fordeling og lagringskontrollen i databasen
+bruker de samme datoene. Eksisterende vakter bevares til admin endrer dem.
+Verifikasjon: 57 kodetester og databasekontroll av 2/1/2-lagring på alle
+24.–31. desember i 2026 og 2027, med alle testdata rullet tilbake.
 
 ## Nytt i 1.9.6 – To morgen, én lunsj og to kveld på helligdager
 

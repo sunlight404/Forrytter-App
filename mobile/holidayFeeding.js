@@ -10,7 +10,7 @@ export function seedHolidayPlan(date,shifts) {
 }
 
 export function validateHolidayPlan(date,plan) {
-  if (!isRedDay(date)) throw new Error('Velg en hellig-/høytidsdag');
+  if (!isRedDay(date)) throw new Error('Velg en rød dag i stallkalenderen');
   for (const meal of FEEDING_MEALS) {
     const owners=plan[meal.key];
     if (!Array.isArray(owners)||owners.length!==meal.people||owners.some(person=>!person)) throw new Error(`${meal.label}: velg ${meal.people} ${meal.people===1?'person':'personer'}`);
