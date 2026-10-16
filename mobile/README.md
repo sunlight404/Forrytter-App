@@ -1,6 +1,31 @@
-# Fôrrytter App 1.9.3
+# Fôrrytter App 1.9.4
 
 Mobilappen er en React Native/Expo-app med Supabase. App.js er appen som kjøres; index.html i prosjektroten er en eldre, separat demonstrasjon.
+
+## Nytt i 1.9.4 – Røde dager og tre fôringer
+
+Kalenderen markerer norske hellig-/høytidsdager og alle søndager rødt, med navn
+på den valgte dagen. Påske, Kristi himmelfart og pinse beregnes for kalenderåret.
+Høytider som faller på samme dato, vises samlet. Skoleferier, julaften og
+nyttårsaften er ikke egne røde dager med mindre de faller på en søndag.
+Helligdagslisten følger [helligdagsfredloven](https://lovdata.no/nav/lov/1995-02-24-12)
+og [loven om 1. og 17. mai](https://lovdata.no/nav/lov/1947-04-26-1).
+
+Fôringskalenderen viser morgen, lunsj og kveld på alle røde dager, også før
+ansvarlige er valgt. Manglende fordeling merkes tydelig. Admin får en liste
+over røde dager i den viste måneden som fremdeles mangler fordeling.
+
+Eksisterende dagsansvar med én eller to personer brukes for alle tre fôringer.
+Admin lagrer fortsatt ansvaret gjennom `save_daily_feeding`. Ingen personer
+tildeles automatisk. Individuelle fôringer og ekstraregistreringer bevares.
+Fôringsbehov beregnes fra datoen, mens navnene følger lagrede vakter. Dette
+krever ingen ny databasemigrasjon og endrer ikke eksisterende fôringsavtaler.
+
+Verifikasjon: 47 kodetester, inkludert helligdager, tidssoner, overlappende
+høytider og korrekt fordeling av alle tre fôringer. Seks databasekontroller i
+`supabase/tests/holiday_feeding.sql` verifiserer lagring på en helligdag i uken,
+felles ansvar, beskyttelse mot utdaterte lagringer og adminrettigheter.
+Alle testdata rulles tilbake. Web-eksport er kontrollert.
 
 ## Nytt i 1.9.3 – Hjerter som bekreftelse
 
