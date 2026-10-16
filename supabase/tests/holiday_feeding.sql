@@ -34,10 +34,10 @@ select set_config('request.jwt.claim.sub',(select u[1]::text from feed_test),tru
 do $$ declare c record;n int;owners uuid[];begin
  select * into c from feed_test;
  for n in 1..4 loop
-  owners:=case n when 1 then array[c.u[2]] when 2 then array[c.u[2],c.u[2]] when 3 then array[c.u[2],null] else c.u[2:4] end;
-  begin perform public.save_holiday_feeding(c.s,'2027-03-25',owners,array[c.u[2]],c.u[2:3],'{}');raise exception 'Invalid morning accepted';exception when raise_exception then if sqlerrm not like 'Velg % forskjellige personer%' then raise;end if;end;
+  owners:=case n when 1 then array[c.u[2]] when 2 then array[c.u[2],c.u[2]] when 3 then '{}'::uuid[] else c.u[2:4] end;
+  begin perform public.save_holiday_feeding(c.s,'2027-03-25',owners,array[c.u[2]],c.u[2:3],'{}');raise exception 'Invalid morning accepted';exception when raise_exception then if sqlerrm not like 'Velg forskjellige personer%' and sqlerrm not like 'Ugyldig antall plasser%' then raise;end if;end;
  end loop;
- begin perform public.save_holiday_feeding(c.s,'2027-03-25',c.u[2:3],c.u[2:3],c.u[2:3],'{}');raise exception 'Two lunch owners accepted';exception when raise_exception then if sqlerrm not like 'Velg % forskjellige personer%' then raise;end if;end;
+ begin perform public.save_holiday_feeding(c.s,'2027-03-25',c.u[2:3],c.u[2:3],c.u[2:3],'{}');raise exception 'Two lunch owners accepted';exception when raise_exception then if sqlerrm not like 'Velg forskjellige personer%' and sqlerrm not like 'Ugyldig antall plasser%' then raise;end if;end;
  assert not exists(select 1 from public.feeding_shifts where stable_id=c.s),'Invalid plan wrote rows';
 end $$;
 rollback;
@@ -54,7 +54,7 @@ select set_config('request.jwt.claim.sub',(select u[1]::text from feed_test),tru
 do $$ declare c record;d date;n int;begin
  select * into c from feed_test;
  foreach d in array array['2026-10-18','2026-03-29']::date[] loop
-  begin perform public.save_holiday_feeding(c.s,d,c.u[2:3],array[c.u[2]],c.u[2:3],'{}');raise exception 'Sunday accepted';exception when raise_exception then if sqlerrm not like 'Velg en hellig%' then raise;end if;end;
+  begin perform public.save_holiday_feeding(c.s,d,c.u[2:3],array[c.u[2]],c.u[2:3],'{}');raise exception 'Sunday accepted';exception when raise_exception then if sqlerrm not like 'Velg en rød%' then raise;end if;end;
  end loop;
  for n in 1..3 loop
   begin
@@ -173,3 +173,52 @@ do $$ declare c record;y int;n int;d date;begin
 end $$;
 rollback;
 select 'December 24–31 in 2026/2027: 2/1/2 saved; ordinary days unchanged; all test data rolled back' result;
+
+-- CASE partial-round-trip
+begin;
+create temporary table feed_test as select gen_random_uuid() s,array_agg(id order by id) u from (select id from public.profiles order by id limit 5) p;
+insert into public.stables(id,name) select s,'Isolated third holiday feeding test' from feed_test;
+insert into public.memberships(stable_id,user_id,role,active) select s,u[1],'owner',true from feed_test union all select s,person,'rider',true from feed_test,unnest(u[2:4]) person;
+grant select on feed_test to authenticated;
+set local role authenticated;
+select set_config('request.jwt.claim.sub',(select u[1]::text from feed_test),true);
+do $$ declare c record;ids uuid[];begin
+ select * into c from feed_test;
+ perform public.save_holiday_feeding(c.s,'2026-12-24',array[null,c.u[2]],array[null]::uuid[],array[c.u[3],null],'{}');
+ assert (select count(*) from public.feeding_shifts where stable_id=c.s)=5;
+ assert (select count(assigned_to) from public.feeding_shifts where stable_id=c.s)=2;
+ assert (select assigned_to from public.feeding_shifts where stable_id=c.s and meal='morning' and meal_slot=1) is null;
+ select array_agg(id) into ids from public.feeding_shifts where stable_id=c.s;
+ perform public.save_holiday_feeding(c.s,'2026-12-24',array[null,c.u[2]],array[c.u[4]],array[c.u[3],null],ids);
+ assert (select count(assigned_to) from public.feeding_shifts where stable_id=c.s)=3;
+ select array_agg(id) into ids from public.feeding_shifts where stable_id=c.s;
+ perform public.save_holiday_feeding(c.s,'2026-12-24',array[c.u[3],c.u[2]],array[c.u[4]],array[c.u[3],c.u[2]],ids);
+ assert (select count(assigned_to) from public.feeding_shifts where stable_id=c.s)=5;
+ assert (select assigned_to from public.feeding_shifts where stable_id=c.s and meal='morning' and meal_slot=2)=c.u[2];
+ assert (select assigned_to from public.feeding_shifts where stable_id=c.s and meal='lunch')=c.u[4];
+ assert (select assigned_to from public.feeding_shifts where stable_id=c.s and meal='evening' and meal_slot=1)=c.u[3];
+end $$;
+rollback;
+select 'partial-round-trip passed' result;
+
+-- CASE empty-slots-and-stale-protection
+begin;
+create temporary table feed_test as select gen_random_uuid() s,array_agg(id order by id) u from (select id from public.profiles order by id limit 5) p;
+insert into public.stables(id,name) select s,'Isolated third holiday feeding test' from feed_test;
+insert into public.memberships(stable_id,user_id,role,active) select s,u[1],'owner',true from feed_test union all select s,person,'rider',true from feed_test,unnest(u[2:4]) person;
+grant select on feed_test to authenticated;
+set local role authenticated;
+select set_config('request.jwt.claim.sub',(select u[1]::text from feed_test),true);
+do $$ declare c record;ids uuid[];begin
+ select * into c from feed_test;
+ perform public.save_holiday_feeding(c.s,'2026-12-27',array[null,null]::uuid[],array[null]::uuid[],array[null,null]::uuid[],'{}');
+ assert (select count(*) from public.feeding_shifts where stable_id=c.s)=5;
+ assert (select count(assigned_to) from public.feeding_shifts where stable_id=c.s)=0;
+ select array_agg(id order by id) into ids from public.feeding_shifts where stable_id=c.s;
+ begin perform public.save_holiday_feeding(c.s,'2026-12-27',array[c.u[2],null],array[null]::uuid[],array[null,null]::uuid[],'{}');raise exception 'Stale partial save accepted';exception when raise_exception then if sqlerrm not like 'Fôringene er endret.%' then raise;end if;end;
+ assert (select array_agg(id order by id) from public.feeding_shifts where stable_id=c.s)=ids;
+ perform set_config('request.jwt.claim.sub',c.u[2]::text,true);
+ begin perform public.save_holiday_feeding(c.s,'2026-12-28',array[null,null]::uuid[],array[null]::uuid[],array[null,null]::uuid[],'{}');raise exception 'Rider saved empty plan';exception when insufficient_privilege then null;end;
+end $$;
+rollback;
+select 'empty-slots-and-stale-protection passed' result;

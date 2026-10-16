@@ -3,7 +3,7 @@ import {Pressable,StyleSheet,Text,View} from 'react-native';
 import Dropdown from './Dropdown';
 import {Alert} from './dialogs';
 import {FEEDING_MEALS} from './feedingDay';
-import {saveHolidayFeeding,seedHolidayPlan,holidaySaveIssues} from './holidayFeeding';
+import {saveHolidayFeeding,seedHolidayPlan,holidaySaveIssues,holidayUnassignedSlots,holidayPlanSummary} from './holidayFeeding';
 
 export default function HolidayFeedingForm({client,stableId,date,shifts,options,loading,error,onSaved}) {
   const [plan,setPlan]=useState(()=>seedHolidayPlan(date,shifts));
@@ -16,6 +16,7 @@ export default function HolidayFeedingForm({client,stableId,date,shifts,options,
     if (!dirty&&!loading&&!error) {setPlan(seedHolidayPlan(date,shifts));setExpected(shifts.map(s=>s.id));}
   },[date,revision,loading,error,dirty]);
   const issues=holidaySaveIssues({date,plan,activeUserIds:options.map(person=>person.value),loading,error});
+  const unassigned=holidayUnassignedSlots(plan);
   const choose=(meal,index,value)=>{setDirty(true);setSaveError('');setPlan(previous=>({...previous,[meal]:previous[meal].map((person,i)=>i===index?value:person)}));};
   function explainMissing() {
     if (!issues.length) return false;
@@ -28,23 +29,24 @@ export default function HolidayFeedingForm({client,stableId,date,shifts,options,
     try {
       await saveHolidayFeeding(client,{stableId,date,plan,expected});
       await onSaved();setDirty(false);
-      Alert.alert('Lagret','Morgen: 2 personer. Lunsj: 1 person. Kveld: 2 personer.');
+      Alert.alert('Lagret',holidayPlanSummary(plan)+(unassigned.length?'\nLedige plasser er lagret og kan fylles inn senere.':'\nAlle fôringene er fordelt.'));
     } catch(e) {const message=e.message||'Kunne ikke lagre. Kontroller nettforbindelsen og prøv igjen.';setSaveError(message);Alert.alert('Kunne ikke lagre fôringer',message);}
     finally {working.current=false;setSaving(false);}
   }
   function confirmSave() {
     if(working.current||explainMissing())return;
-    if(expected.length)Alert.alert('Erstatt fôringer denne dagen','De lagrede fôringene erstattes med valgt fordeling: to morgen, én lunsj og to kveld.',[{text:'Avbryt',style:'cancel'},{text:'Lagre fordeling',onPress:save}]);
+    if(expected.length)Alert.alert('Oppdater fordelingen',holidayPlanSummary(plan)+'\nValgene lagres. Tomme plasser blir stående ledige og kan fylles inn senere.',[{text:'Avbryt',style:'cancel'},{text:'Lagre fordeling',onPress:save}]);
     else save();
   }
   return <View>
     <Text style={styles.heading}>Fordel personer per måltid</Text>
-    <Text style={styles.help}>Samme person kan ha flere måltider. Dere trenger ikke tre forskjellige personer.</Text>
+    <Text style={styles.help}>Lagre de personene du vet om nå. Ledige plasser kan fylles inn senere. Samme person kan ha flere måltider.</Text>
     {FEEDING_MEALS.map(meal=><View key={meal.key} style={styles.meal}>
       <Text style={styles.heading}>{meal.label} · {meal.people} {meal.people===1?'person':'personer'}</Text>
       {Array.from({length:meal.people},(_,i)=><Dropdown key={i} label={`${meal.label} – person ${i+1}`} value={plan[meal.key]?.[i]} disabled={saving||loading||!!error} onChange={value=>choose(meal.key,i,value)} options={options.filter(person=>!(plan[meal.key]||[]).some((id,index)=>index!==i&&id===person.value))}/>)}
     </View>)}
-    {issues.length>0&&<View style={styles.issueBox}><Text style={styles.issueHeading}>{loading?'Henter fôringer …':error?'Fôringer må oppdateres':'Dette mangler før lagring:'}</Text>{issues.map((message,i)=><Text key={i} accessibilityRole="alert" style={styles.issueText}>{message}</Text>)}</View>}
+    {!loading&&!error&&unassigned.length>0&&<View style={styles.issueBox}><Text style={styles.issueHeading}>Ledige plasser – kan fylles inn senere</Text>{unassigned.map((message,i)=><Text key={i} style={styles.issueText}>{message}</Text>)}</View>}
+    {issues.length>0&&<View style={styles.issueBox}><Text style={styles.issueHeading}>{loading?'Henter fôringer …':error?'Fôringer må oppdateres':'Rett dette før lagring:'}</Text>{issues.map((message,i)=><Text key={i} accessibilityRole="alert" style={styles.issueText}>{message}</Text>)}</View>}
     {!!saveError&&<Text accessibilityRole="alert" style={styles.issueText}>{saveError}</Text>}
     <Pressable accessibilityRole="button" accessibilityState={{disabled:saving,busy:saving}} disabled={saving} onPress={confirmSave} style={[styles.button,saving&&styles.disabled]}><Text style={styles.buttonText}>{saving?'Lagrer …':'Lagre fordeling'}</Text></Pressable>
   </View>;

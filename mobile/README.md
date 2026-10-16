@@ -1,6 +1,25 @@
-# Fôrrytter App 1.9.8
+# Fôrrytter App 1.9.9
 
 Mobilappen er en React Native/Expo-app med Supabase. App.js er appen som kjøres; index.html i prosjektroten er en eldre, separat demonstrasjon.
+
+## Nytt i 1.9.9 – Lagre kjent fordeling og fyll inn resten senere
+
+Admin kan lagre en delvis fôringsfordeling på røde dager. Valgte personer
+lagres på sitt måltid og sin plass, og tomme plasser lagres som ledige.
+Ved neste åpning beholdes både de kjente navnene og plasseringen, også når
+person 1 mangler og person 2 er valgt. Flere personer kan legges til senere.
+
+Ledige plasser vises som «ikke fordelt ennå» og hindrer ikke lagring.
+Fôringsoversikten viser fortsatt hvor mange som mangler av 2 morgen,
+1 lunsj og 2 kveld. Lagret delvis fordeling beskrives som delvis fordelt.
+Ugyldige valg, duplikater, manglende tilgang og utdaterte endringer avvises
+fortsatt. Lesefeil og faktiske lagringsfeil vises som før.
+
+Databasen tillater null i de fem faste måltidsplassene. Den kontrollerer
+fortsatt aktive medlemmer, ulike personer innen måltidet og adminrettigheter.
+Verifikasjon: 68 kodetester og ti isolerte databasefaser, inkludert delvis
+lagring, utfylling senere uten tap av kjente navn, tomme plasser, samtidighet
+og tilgangskontroll. Alle testdata rulles tilbake. Web-eksport er kontrollert.
 
 ## Nytt i 1.9.8 – Tydelig beskjed ved lagring av fôringsfordeling
 

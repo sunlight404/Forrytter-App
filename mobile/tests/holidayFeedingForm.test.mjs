@@ -32,22 +32,28 @@ function mount(overrides={}) {
   return {button:buttons.at(-1),alerts,calls,html};
 }
 
-test('an incomplete form has a clickable save button and pressing it names every missing field',()=>{
+test('an empty form saves open slots and clearly explains that they can be filled later',async()=>{
   const form=mount();assert.equal(form.button.disabled,false);
-  assert(form.html.includes('Dette mangler før lagring:'));
+  assert(form.html.includes('Ledige plasser – kan fylles inn senere'));
   form.button.onPress();
-  assert.equal(form.alerts[0][0],'Fordelingen er ikke klar');
-  assert(form.alerts[0][1].includes('Morgenfôring – person 2'));
-  assert(form.alerts[0][1].includes('Lunsjfôring – person 1'));
-  assert(form.alerts[0][1].includes('Kveldsfôring – person 2'));
-  assert.equal(form.calls.length,0);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(form.alerts.at(-1)[0],'Lagret');
+  assert(form.alerts.at(-1)[1].includes('Ledige plasser er lagret og kan fylles inn senere.'));
+  assert.deepEqual(form.calls[0][1].p_morning,[null,null]);
+  assert.deepEqual(form.calls[0][1].p_lunch,[null]);
+  assert.deepEqual(form.calls[0][1].p_evening,[null,null]);
 });
 
-test('an older shared day specifically explains that a lunch person must be selected',()=>{
+test('a day with known morning/evening owners can be saved while lunch stays open',async()=>{
   const shifts=[{id:'old-one',shift_date:date,daily_slot:1,assigned_to:'one'},{id:'old-two',shift_date:date,daily_slot:2,assigned_to:'two'}];
   const form=mount({shifts});form.button.onPress();
-  assert.equal(form.alerts[0][1],'Lunsjfôring – person 1: velg en person.');
-  assert.equal(form.calls.length,0);
+  assert.equal(form.alerts[0][0],'Oppdater fordelingen');
+  form.alerts[0][2].find(button=>button.text==='Lagre fordeling').onPress();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(form.calls[0][1].p_morning,['one','two']);
+  assert.deepEqual(form.calls[0][1].p_lunch,[null]);
+  assert.deepEqual(form.calls[0][1].p_evening,['one','two']);
+  assert.equal(form.alerts.at(-1)[0],'Lagret');
 });
 
 test('pressing save while loading or after a failed read gives a reason and sends no write',()=>{
@@ -59,12 +65,19 @@ test('pressing save while loading or after a failed read gives a reason and send
 
 test('a complete form confirms replacement and saves once even if confirmation is pressed twice',async()=>{
   const form=mount({shifts:fullShifts()});form.button.onPress();
-  assert.equal(form.alerts[0][0],'Erstatt fôringer denne dagen');
+  assert.equal(form.alerts[0][0],'Oppdater fordelingen');
   const confirm=form.alerts[0][2].find(button=>button.text==='Lagre fordeling');confirm.onPress();confirm.onPress();
   await new Promise(resolve=>setImmediate(resolve));
   assert.equal(form.calls.length,1);assert.equal(form.calls[0][0],'save_holiday_feeding');
   assert.deepEqual(form.calls[0][1].p_lunch,['one']);
   assert.equal(form.alerts.at(-1)[0],'Lagret');
+});
+
+test('a selected person who is no longer available still produces a clear error without saving',()=>{
+  const form=mount({shifts:fullShifts(),options:[options[0]]});form.button.onPress();
+  assert.equal(form.alerts[0][0],'Fordelingen er ikke klar');
+  assert(form.alerts[0][1].includes('personen er ikke lenger tilgjengelig'));
+  assert.equal(form.calls.length,0);
 });
 
 test('a server or network failure is explained and never reported as saved',async()=>{
