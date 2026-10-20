@@ -21,6 +21,21 @@ export function isoWeek(value) {
 export const weekLabel = value => `Uke ${isoWeek(value)} · ${isoWeek(value)%2===0?'partallsuke':'oddetallsuke'}`;
 export const agreementLabel = rule => `${rule.weekday===6?'Lørdag':'Søndag'} i ${rule.week_parity===0?'partallsuker':'oddetallsuker'}`;
 
+// Use saved calendar assignments so cancellations and individual changes win.
+// Only include the Sunday belonging to the first upcoming Saturday.
+export function nextHorseDays(assignments = [], afterDate) {
+  const upcoming = assignments
+    .filter(row => !row.is_cancelled && row.assignment_date > afterDate)
+    .slice().sort((a,b) => a.assignment_date.localeCompare(b.assignment_date));
+  const first = upcoming[0];
+  if (!first) return [];
+  const date = new Date(`${first.assignment_date}T12:00:00`);
+  if (date.getDay() !== 6) return [first];
+  date.setDate(date.getDate()+1);
+  const sunday = upcoming.find(row => row.assignment_date === dateKey(date));
+  return sunday ? [first,sunday] : [first];
+}
+
 // Concrete calendar rows remain authoritative: never reconstruct dates from a rule,
 // because cancellations, individual changes and approved swaps override that rule.
 export function assignmentOrigin(assignment, agreements = [], swap = null) {
@@ -32,3 +47,4 @@ export function assignmentOrigin(assignment, agreements = [], swap = null) {
   }
   return 'Avtale for denne datoen';
 }
+

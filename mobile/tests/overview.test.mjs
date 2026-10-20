@@ -30,7 +30,7 @@ test('ISO week parity at year boundaries, including adjacent odd weeks 53 and 1'
   assert.equal(agreementLabel({weekday:7,week_parity:0}),'Søndag i partallsuker');
 });
 
-import { assignmentOrigin } from '../overview.js';
+import { assignmentOrigin, nextHorseDays } from '../overview.js';
 test('next horse identifies the actual weekend agreement', () => {
   const a = {id:'a', recurring_id:'rule', assignment_date:'2026-09-19'};
   assert.equal(assignmentOrigin(a,[{id:'rule',weekday:6,week_parity:0}]), 'Fast avtale · Lørdag i partallsuker');
@@ -43,3 +43,42 @@ test('only an approved swap matching the current horse and date is labelled a sw
   assert.equal(assignmentOrigin({...a,horse_id:'admin-override'},[],swap),'Avtale for denne datoen');
   assert.equal(assignmentOrigin({...a,id:'unrelated'},[],swap),'Avtale for denne datoen');
 });
+
+const horseDay = (date, horse, rest = {}) => ({id:date,assignment_date:date,horse_id:horse,is_cancelled:false,...rest});
+test('both horses in the next weekend appear with their own dates and training across a month boundary', () => {
+  const saturday=horseDay('2026-10-31','horse-a',{training_text:'Tur'});
+  const sunday=horseDay('2026-11-01','horse-b',{training_text:'Bane'});
+  const rows=[sunday,saturday,horseDay('2026-11-14','horse-a')];
+  assert.deepEqual(nextHorseDays(rows,'2026-10-20'),[saturday,sunday]);
+  assert.equal(rows[0],sunday);
+});
+test('one-day agreements do not pull in a horse from a later weekend', () => {
+  const saturday=horseDay('2026-10-31','horse-a');
+  assert.deepEqual(nextHorseDays([saturday,horseDay('2026-11-08','horse-b')],'2026-10-20'),[saturday]);
+  const sunday=horseDay('2026-11-01','horse-b');
+  assert.deepEqual(nextHorseDays([sunday,horseDay('2026-11-14','horse-a')],'2026-10-20'),[sunday]);
+});
+test('today and cancelled days stay out of the upcoming section', () => {
+  const saturday=horseDay('2026-10-31','horse-a');
+  const sunday=horseDay('2026-11-01','horse-b');
+  assert.deepEqual(nextHorseDays([saturday,sunday],'2026-10-31'),[sunday]);
+  assert.deepEqual(nextHorseDays([saturday,{...sunday,is_cancelled:true}],'2026-10-20'),[saturday]);
+  assert.deepEqual(nextHorseDays([saturday,sunday],'2026-11-01'),[]);
+  assert.deepEqual(nextHorseDays([],'2026-10-20'),[]);
+});
+test('the same horse on both days keeps two separate task dates', () => {
+  const rows=[horseDay('2026-10-31','horse-a'),horseDay('2026-11-01','horse-a')];
+  assert.equal(nextHorseDays(rows,'2026-10-20').length,2);
+});
+test('upcoming weekend selection works across years and the ISO week 53 boundary', () => {
+  const rows=[horseDay('2027-01-02','horse-a'),horseDay('2027-01-03','horse-b')];
+  assert.deepEqual(nextHorseDays(rows,'2026-12-31'),rows);
+  const newYear=[horseDay('2022-12-31','horse-a'),horseDay('2023-01-01','horse-b')];
+  assert.deepEqual(nextHorseDays(newYear,'2022-12-20'),newYear);
+});
+test('an approved Sunday swap does not change the origin of the Saturday assignment', () => {
+  const rows=[horseDay('2026-10-31','horse-a',{recurring_id:'saturday-rule'}),horseDay('2026-11-01','horse-b')];
+  const swap={status:'approved',from_assignment_id:'2026-11-01',to_assignment_id:'other',to_snapshot:{horse_id:'horse-b',assignment_date:'2026-11-01'}};
+  assert.deepEqual(nextHorseDays(rows,'2026-10-20').map(row=>assignmentOrigin(row,[{id:'saturday-rule',weekday:6,week_parity:0}],swap)),['Fast avtale · Lørdag i partallsuker','Godkjent hestebytte']);
+});
+

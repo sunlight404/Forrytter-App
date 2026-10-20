@@ -17,7 +17,7 @@ import HolidayFeedingForm from './HolidayFeedingForm';
 import Notifications, { disableDeviceNotifications } from './Notifications';
 const memberOptions=members=>members.map(m=>({value:m.user_id,label:(m.profiles?.full_name||'Uten navn')+(m.active===false?' (fjernet)':'')})).sort((a,b)=>a.label.localeCompare(b.label,'nb'));
 const horseOptions=horses=>horses.map(h=>({value:h.id,label:h.name})).sort((a,b)=>a.label.localeCompare(b.label,'nb'));
-import { STANDARD_TASKS, nextWeekend, isWeekend, feedingLabel, timeKey, upcomingShiftFilter, weekLabel, agreementLabel, assignmentOrigin } from './overview';
+import { STANDARD_TASKS, nextWeekend, isWeekend, feedingLabel, timeKey, upcomingShiftFilter, weekLabel, agreementLabel, assignmentOrigin, nextHorseDays } from './overview';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 
@@ -299,7 +299,7 @@ function TodayScreen({ userId }) {
   const [messages, setMessages] = useState([]);
   const [shifts, setShifts] = useState([]);
   const [assignments, setAssignments] = useState([]);
-  const [nextAssignment, setNextAssignment] = useState(null);
+  const [nextAssignments, setNextAssignments] = useState([]);
   const [nextShift, setNextShift] = useState(null);
   const [agreements,setAgreements] = useState([]);
   const [selectedDate, setSelectedDate] = useState(localDate());
@@ -327,21 +327,24 @@ function TodayScreen({ userId }) {
         supabase.from('messages').select('*').eq('stable_id',STABLE_ID).eq('active',true).gte('created_at',messageCutoff()).order('created_at',{ascending:false}),
         supabase.from('feeding_shifts').select('*').eq('stable_id',STABLE_ID).eq('shift_date',d).eq('assigned_to',userId).order('shift_time'),
         supabase.from('horse_assignments').select('*,horses(name)').eq('stable_id',STABLE_ID).eq('assignment_date',d).eq('user_id',userId).eq('is_cancelled',false),
-        supabase.from('horse_assignments').select('*,horses(name)').eq('stable_id',STABLE_ID).gt('assignment_date',d).eq('user_id',userId).eq('is_cancelled',false).order('assignment_date').limit(1).maybeSingle(),
+        supabase.from('horse_assignments').select('*,horses(name)').eq('stable_id',STABLE_ID).gt('assignment_date',d).eq('user_id',userId).eq('is_cancelled',false).order('assignment_date').limit(2),
         supabase.from('feeding_shifts').select('*').eq('stable_id',STABLE_ID).eq('assigned_to',userId).or(upcomingShiftFilter(d,timeKey())).order('shift_date').order('shift_time').limit(1).maybeSingle(),
         supabase.from('recurring_horse_assignments').select('*,horses(name)').eq('stable_id',STABLE_ID).eq('user_id',userId).eq('active',true).order('week_parity').order('weekday')
       ]);
       const failure = [m,s,a,n,f,r].find(result => result.error);
       if (failure) throw failure.error;
-      let swap = null;
-      if (n.data && !n.data.recurring_id) {
-        const result = await supabase.from('horse_swap_requests').select('status,from_assignment_id,to_assignment_id,from_snapshot,to_snapshot').eq('stable_id',STABLE_ID).eq('status','approved').or(`from_assignment_id.eq.${n.data.id},to_assignment_id.eq.${n.data.id}`).order('decided_at',{ascending:false}).limit(1).maybeSingle();
-        if (result.error) throw result.error;
-        swap = result.data;
-      }
+      const upcoming = await Promise.all(nextHorseDays(n.data || [],d).map(async assignment => {
+        let swap = null;
+        if (!assignment.recurring_id) {
+          const result = await supabase.from('horse_swap_requests').select('status,from_assignment_id,to_assignment_id,from_snapshot,to_snapshot').eq('stable_id',STABLE_ID).eq('status','approved').or(`from_assignment_id.eq.${assignment.id},to_assignment_id.eq.${assignment.id}`).order('decided_at',{ascending:false}).limit(1).maybeSingle();
+          if (result.error) throw result.error;
+          swap = result.data;
+        }
+        return {...assignment, origin:assignmentOrigin(assignment,r.data || [],swap)};
+      }));
       if (id !== request.current) return;
       setMessages(m.data||[]); setShifts(s.data||[]); setAssignments(a.data||[]);
-      setNextAssignment(n.data ? {...n.data, origin:assignmentOrigin(n.data,r.data||[],swap)} : null); setNextShift(f.data); setAgreements(r.data||[]);
+      setNextAssignments(upcoming); setNextShift(f.data); setAgreements(r.data||[]);
     } catch (e) { if (id === request.current) setError('Kunne ikke oppdatere oversikten. Prøv igjen.'); }
     finally { if (id === request.current) setBusy(false); }
   }
@@ -349,7 +352,7 @@ function TodayScreen({ userId }) {
   return <>
     <Section title="Min oversikt"><Text style={styles.muted}>{formatDateLong(today)} · {weekLabel(today)} · Versjon {appConfig.expo.version}</Text>{isRedDay(today)&&<Text style={styles.redDayLabel}>{holidayLabel(today)} · Morgen-, lunsj- og kveldsfôring. Se ansvarlige i Fôring.</Text>}{error?<Text accessibilityRole="alert">{error}</Text>:null}<Btn title={busy?'Oppdaterer …':'Oppdater'} disabled={busy} secondary onPress={()=>{load();setTaskRevision(v=>v+1);}}/></Section>
     {assignments.length>0&&<Section title="Min hest i dag">{assignments.map(a=><View key={a.id}><View style={styles.horseCard}><Text style={styles.horseName}>🐴 {a.horses?.name || 'Hest'}</Text><Text>{formatDateLong(today)}</Text><TrainingText text={a.training_text}/></View><HorseDayTasks key={a.id+today+taskRevision} userId={userId} selectedDate={today}/></View>)}</Section>}
-    <Section title="Neste gang jeg har hest">{nextAssignment?<><View style={styles.horseCard}><Text style={styles.horseName}>🐴 {nextAssignment.horses?.name || 'Hest'}</Text><Text>{formatDateLong(nextAssignment.assignment_date)} · {weekLabel(nextAssignment.assignment_date)}</Text><Text style={styles.muted}>{nextAssignment.origin}</Text>{!nextAssignment.recurring_id&&nextAssignment.origin!=='Godkjent hestebytte'&&<Text style={styles.help}>Treningen er lagret spesielt for denne datoen og overstyrer fast avtale.</Text>}<TrainingText text={nextAssignment.training_text}/></View><HorseDayTasks key={nextAssignment.id+nextAssignment.assignment_date+taskRevision} userId={userId} selectedDate={nextAssignment.assignment_date}/></>:<Empty text="Ingen kommende hestetildeling registrert."/>}</Section>
+    <Section title="Neste gang jeg har hest">{nextAssignments.length?nextAssignments.map(assignment=><View key={assignment.id} style={{marginBottom:16}}><View style={styles.horseCard}><Text style={styles.horseName}>🐴 {assignment.horses?.name || 'Hest'}</Text><Text>{formatDateLong(assignment.assignment_date)} · {weekLabel(assignment.assignment_date)}</Text><Text style={styles.muted}>{assignment.origin}</Text>{!assignment.recurring_id&&assignment.origin!=='Godkjent hestebytte'&&<Text style={styles.help}>Treningen er lagret spesielt for denne datoen og overstyrer fast avtale.</Text>}<TrainingText text={assignment.training_text}/></View><HorseDayTasks key={assignment.id+assignment.assignment_date+taskRevision} userId={userId} selectedDate={assignment.assignment_date}/></View>):<Empty text="Ingen kommende hestetildeling registrert."/>}</Section>
     {(shifts.length>0||nextShift)&&<Section title="Mine fôringer">{shifts.map(shift=><View key={shift.id} style={styles.item}><Text style={styles.bold}>I dag · {feedingLabel(shift)}</Text><Text style={styles.muted}>{formatDate(shift.shift_date)}</Text></View>)}{nextShift&&!shifts.some(shift=>shift.id===nextShift.id)&&<View style={styles.item}><Text style={styles.bold}>{feedingLabel(nextShift)}</Text><Text>{formatDateLong(nextShift.shift_date)}</Text></View>}</Section>}
     <Btn title={showDetails?'Skjul flere valg':'Flere valg'} secondary onPress={()=>setShowDetails(v=>!v)}/>
     {showDetails&&<>

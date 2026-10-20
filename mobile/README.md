@@ -1,6 +1,14 @@
-# Fôrrytter App 1.9.9
+# Fôrrytter App 1.10.0
 
 Mobilappen er en React Native/Expo-app med Supabase. App.js er appen som kjøres; index.html i prosjektroten er en eldre, separat demonstrasjon.
+
+## Nytt i 1.10.0 – Begge hestedagene i neste helg
+
+«Neste gang jeg har hest» viser både lørdag og søndag når rytteren har registrerte hestedager begge dagene i samme kommende helg. Hver dag har hestens navn, dato, trening og sin egen oppgaveliste med avkrysninger. Dette fungerer også når hestene er forskjellige, og når helgen går over et månedsskifte.
+
+Bare konkrete, ikke-avlyste tildelinger brukes. Hvis rytteren bare har én dag i den neste helgen, vises bare den. Dager fra senere helger hentes ikke inn i samme visning. Dagens hest vises fortsatt i «Min hest i dag». Avkrysninger og lagrede avtaler endres ikke av visningsoppdateringen. Opprinnelse og godkjente hestebytter vurderes separat for hver dato.
+
+Verifikasjon: 77 kodetester bestått og nettversjonen bygget. Separat avkrysning for lørdagens og søndagens hest er verifisert med eksisterende tilgangskontroll i en transaksjon som rulles tilbake.
 
 ## Oppdatert varselstjeneste – Varsler for chatmeldinger
 
