@@ -138,8 +138,8 @@ do $$ begin
   if (select count(*) from public.community_messages)<>(select group_count from dm_context) then raise exception 'Private messages appeared in group chat'; end if;
   if (select count(*) from public.messages)<>(select board_count from dm_context) then raise exception 'Private messages appeared on board'; end if;
   if (select md5(coalesce(string_agg(to_jsonb(t)::text,',' order by to_jsonb(t)::text),'')) from public.get_tv_messages() t)<>(select tv_snapshot from dm_context) then raise exception 'TV feed changed'; end if;
-  if exists(select 1 from pg_trigger where tgrelid='public.direct_messages'::regclass and not tgisinternal) then raise exception 'Unexpected direct-message trigger'; end if;
-  insert into dm_results values('group chat, board, TV and push remain separate');
+  if exists(select 1 from pg_trigger where tgrelid='public.direct_messages'::regclass and not tgisinternal and tgname<>'push_direct_message') then raise exception 'Unexpected direct-message trigger'; end if;
+  insert into dm_results values('group chat, board, TV remain separate; only the authorized push trigger');
   if (select count(*) from dm_results)<>22 then raise exception 'Expected 22 completed checks, got %',(select count(*) from dm_results); end if;
 end $$;
 rollback;

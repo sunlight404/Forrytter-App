@@ -2,6 +2,12 @@
 
 Mobilappen er en React Native/Expo-app med Supabase. App.js er appen som kjøres; index.html i prosjektroten er en eldre, separat demonstrasjon.
 
+## Oppdatert varselstjeneste – Varsler for chatmeldinger
+
+Nye gruppechatmeldinger varsler aktive stallmedlemmer som har slått på varsler på enheten. Private meldinger varsler bare mottakeren. Ingen varsler sendes til avsenderen, ved import av historikk, sletting eller hjerter. Flere ventende varsler samles per kanal. Varsler viser en generell beskjed uten meldingstekst. Trykk åpner Chat-fanen. Velg Privat · én til én for private samtaler.
+
+Varsler kan aktiveres under Min oversikt, med samme telefoninnlogging som før. Eksisterende varselabonnementer beholdes. På iPhone må nettappen legges til og åpnes fra Hjem-skjerm. Plattformvarsler krever brukerens tillatelse. Varslingene kan testes fra Min oversikt → Send testvarsel. Ingen ny webpublisering eller Expo-innlogging er nødvendig for denne serveroppdateringen. Distribusjonen bruker den eksisterende push-tjenesten og minuttjobben; en fysisk telefon er nødvendig for å bekrefte levering på en bestemt enhet.
+
 ## Nytt i 1.9.9 – Lagre kjent fordeling og fyll inn resten senere
 
 Admin kan lagre en delvis fôringsfordeling på røde dager. Valgte personer

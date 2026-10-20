@@ -93,8 +93,8 @@ update public.memberships set active=true where stable_id=(select stable from ch
 do $$ begin
   if (select count(*) from public.messages)<>(select tv_message_count from chat_test_context) then raise exception 'Chat created TV messages'; end if;
   if (select md5(coalesce(string_agg(to_jsonb(t)::text, ',' order by to_jsonb(t)::text),'')) from public.get_tv_messages() t)<>(select tv_snapshot from chat_test_context) then raise exception 'Chat appeared in TV feed'; end if;
-  if exists(select 1 from pg_trigger where tgrelid='public.community_messages'::regclass and not tgisinternal) then raise exception 'Unexpected chat trigger'; end if;
-  insert into chat_test_results values ('TV feed and TV messages unchanged; no chat push trigger');
+  if exists(select 1 from pg_trigger where tgrelid='public.community_messages'::regclass and not tgisinternal and tgname<>'push_community_message') then raise exception 'Unexpected chat trigger'; end if;
+  insert into chat_test_results values ('TV feed and TV messages unchanged; only the authorized chat push trigger');
 end $$;
 
 set local role authenticated;
@@ -119,3 +119,4 @@ reset role;
 do $$ begin if (select count(*) from chat_test_results)<>14 then raise exception 'Expected 14 completed checks'; end if; end $$;
 rollback;
 select '14 database checks passed; all test data rolled back' as result;
+
