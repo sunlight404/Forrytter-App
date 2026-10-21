@@ -1,7 +1,7 @@
 import { CHAT_PAGE_SIZE, messageBody } from './communityMessages.js';
 
 export const DIRECT_TABLE = 'direct_messages';
-const fields = 'id,stable_id,sender_id,recipient_id,body,created_at,sender:profiles!direct_messages_sender_id_fkey(full_name),recipient:profiles!direct_messages_recipient_id_fkey(full_name)';
+const fields = 'id,stable_id,sender_id,recipient_id,body,image_path,created_at,sender:profiles!direct_messages_sender_id_fkey(full_name),recipient:profiles!direct_messages_recipient_id_fkey(full_name)';
 const uuid = value => {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value || '')) throw new Error('Velg en mottaker fra stallen.');
   return value;
@@ -54,12 +54,12 @@ export async function loadDirectMessages(client, stableId, userId, recipientId, 
 export async function sendDirectMessage(client, draft) {
   uuid(draft.recipient_id); uuid(draft.sender_id);
   if (draft.recipient_id === draft.sender_id) throw new Error('Velg en annen person å skrive til.');
-  const message = { id: draft.id, stable_id: draft.stable_id, sender_id: draft.sender_id, recipient_id: draft.recipient_id, body: messageBody(draft.body) };
+  const message = { id: draft.id, stable_id: draft.stable_id, sender_id: draft.sender_id, recipient_id: draft.recipient_id, body: messageBody(draft.body, draft.image_path), ...(draft.image_path ? { image_path: draft.image_path } : {}) };
   const { data, error } = await client.from(DIRECT_TABLE).insert(message).select(fields).single();
   if (!error) return data;
   if (error.code === '23505') {
     const result = await client.from(DIRECT_TABLE).select(fields).eq('stable_id', message.stable_id).eq('id', message.id).single();
-    if (!result.error && result.data?.sender_id === message.sender_id && result.data?.recipient_id === message.recipient_id && result.data?.body === message.body) return result.data;
+    if (!result.error && result.data?.sender_id === message.sender_id && result.data?.recipient_id === message.recipient_id && result.data?.body === message.body && (result.data?.image_path || null) === (message.image_path || null)) return result.data;
   }
   throw error;
 }

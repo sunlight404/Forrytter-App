@@ -1,9 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AppState, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AppState, Image, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { Alert } from './dialogs';
 import { CHAT_TABLE, CHAT_PAGE_SIZE, MAX_MESSAGE_LENGTH, deleteCommunityMessage, loadCommunityMessages, messageBody, messageId, sendCommunityMessage } from './communityMessages';
 import { DIRECT_TABLE, deleteDirectMessage, loadDirectMessages, sendDirectMessage } from './directMessages';
 import { HeartsProvider, MessageHeart } from './MessageHearts';
+import ChatImage from './ChatImage';
+import { MAX_IMAGE_BYTES, uploadChatImage } from './chatImages';
 
 function Button({ title, onPress, disabled, secondary, danger }) {
   return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress}
@@ -16,11 +20,34 @@ export default function CommunityChat({ supabase, stableId, userId, isAdmin, rec
   const privateChat = !!recipient;
   const canSend = !privateChat || recipient.active;
   const [items, setItems] = useState([]), [text, setText] = useState('');
+  const [image, setImage] = useState(null), [picking, setPicking] = useState(false);
   const [loading, setLoading] = useState(true), [sending, setSending] = useState(false);
   const [error, setError] = useState(''), [sendError, setSendError] = useState('');
   const [hasMore, setHasMore] = useState(false), [deleting, setDeleting] = useState(null);
   const alive = useRef(false), request = useRef(0), limit = useRef(CHAT_PAGE_SIZE);
   const sendLock = useRef(false), pendingDraft = useRef(null);
+  const pickLock = useRef(false);
+
+  useEffect(() => { onDraftChange?.(text || (image || picking ? '[Bilde]' : '')); }, [text, image, picking]);
+
+  async function pickImage() {
+    if (pickLock.current || sendLock.current || !canSend) return;
+    pickLock.current = true; setPicking(true); setSendError('');
+    try {
+      // Invoke directly from the press so mobile browsers allow the system picker.
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: false, quality: 1 });
+      if (result.canceled) return;
+      const asset = result.assets[0];
+      const context = ImageManipulator.manipulate(asset.uri);
+      if (Math.max(asset.width, asset.height) > 1600) context.resize(asset.width >= asset.height ? { width: 1600 } : { height: 1600 });
+      const rendered = await context.renderAsync();
+      const prepared = await rendered.saveAsync({ format: SaveFormat.JPEG, compress: 0.8, base64: true });
+      context.release(); rendered.release();
+      if (!prepared.base64 || prepared.base64.length * 0.75 > MAX_IMAGE_BYTES) throw new Error('Bildet er for stort. Velg et mindre bilde.');
+      if (alive.current) setImage(prepared);
+    } catch { if (alive.current) setSendError('Kunne ikke åpne bildet. Prøv et annet bilde i JPG, PNG eller HEIC, og sjekk at appen har tilgang til bildene dine.'); }
+    finally { pickLock.current = false; if (alive.current) setPicking(false); }
+  }
 
   async function load(quiet = false) {
     const id = ++request.current;
@@ -56,17 +83,18 @@ export default function CommunityChat({ supabase, stableId, userId, isAdmin, rec
   }, [supabase, stableId, userId, recipient?.id]);
 
   async function send() {
-    if (sendLock.current || !canSend) return;
+    if (sendLock.current || pickLock.current || !canSend) return;
     let body;
-    try { body = messageBody(text); } catch (e) { setSendError(e.message); return; }
+    try { body = messageBody(text, image ? 'pending' : null); } catch (e) { setSendError(e.message); return; }
     sendLock.current = true; setSending(true); setSendError('');
-    if (!pendingDraft.current || pendingDraft.current.body !== body) pendingDraft.current = { id: messageId(), stable_id: stableId, sender_id: userId, ...(privateChat ? { recipient_id: recipient.id } : {}), body };
+    if (!pendingDraft.current || pendingDraft.current.body !== body || pendingDraft.current.image !== image) pendingDraft.current = { id: messageId(), stable_id: stableId, sender_id: userId, ...(privateChat ? { recipient_id: recipient.id } : {}), body, image };
     try {
+      if (image && !pendingDraft.current.image_path) pendingDraft.current.image_path = await uploadChatImage(supabase, pendingDraft.current, image);
       await (privateChat ? sendDirectMessage : sendCommunityMessage)(supabase, pendingDraft.current);
       if (!alive.current) return;
-      setText(''); onDraftChange?.(''); pendingDraft.current = null; await load(true);
+      setText(''); setImage(null); onDraftChange?.(''); pendingDraft.current = null; await load(true);
     } catch {
-      if (alive.current) setSendError('Meldingen kunne ikke bekreftes sendt. Teksten er beholdt. Trykk Send for å prøve igjen.');
+      if (alive.current) setSendError('Meldingen kunne ikke bekreftes sendt. Tekst og bilde er beholdt. Trykk Send for å prøve igjen.');
     } finally {
       sendLock.current = false; if (alive.current) setSending(false);
     }
@@ -96,9 +124,11 @@ export default function CommunityChat({ supabase, stableId, userId, isAdmin, rec
       <Text style={styles.label}>{privateChat ? 'Ny privat melding' : 'Ny melding til alle'}</Text>
       <TextInput accessibilityLabel={privateChat ? `Privat melding til ${recipient.name}` : 'Melding til fellespraten'} placeholder={privateChat ? 'Skriv en privat melding …' : 'Skriv til de andre fôrrytterne …'}
         multiline maxLength={MAX_MESSAGE_LENGTH} editable={!sending && canSend} value={text}
-        onChangeText={value => { setText(value); onDraftChange?.(value); setSendError(''); }} style={styles.input} />
+        onChangeText={value => { setText(value); setSendError(''); }} style={styles.input} />
+      {image && <View style={styles.imagePreview}><Image accessibilityLabel="Valgt bilde, ikke sendt ennå" source={{ uri: image.uri }} resizeMode="contain" style={styles.preview} /><Button title="Fjern bilde" secondary disabled={sending || picking} onPress={() => setImage(null)} /></View>}
+      <View style={styles.composerActions}><Button title={picking ? 'Klargjør bilde …' : image ? 'Velg et annet bilde' : 'Legg til bilde'} secondary disabled={sending || picking || !canSend} onPress={pickImage} /></View>
       <View style={styles.composerActions}><Text style={styles.help}>{text.length}/{MAX_MESSAGE_LENGTH}</Text>
-        <Button title={sending ? 'Sender …' : 'Send melding'} disabled={sending || !canSend || !text.trim()} onPress={send} /></View>
+        <Button title={sending ? 'Sender …' : 'Send melding'} disabled={sending || picking || !canSend || (!text.trim() && !image)} onPress={send} /></View>
       {!!sendError && <Text accessibilityRole="alert" style={styles.error}>{sendError}</Text>}
     </View>
     <View style={styles.card}>
@@ -111,7 +141,8 @@ export default function CommunityChat({ supabase, stableId, userId, isAdmin, rec
         <Text style={styles.author}>{item.sender?.full_name || 'Tidligere medlem'}{item.sender_id === userId ? ' · Deg' : ''}</Text>
         <Text style={styles.date}>{new Date(item.created_at).toLocaleString('nb-NO', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</Text>
         {!!item.board_message_id && <Text style={styles.source}>Fra tavla · opprinnelig dato</Text>}
-        <Text selectable style={styles.body}>{item.body}</Text>
+        {!!item.body && <Text selectable style={styles.body}>{item.body}</Text>}
+        {!!item.image_path && <ChatImage supabase={supabase} path={item.image_path} />}
         <MessageHeart messageId={item.id}/>
         {(item.sender_id === userId || (!privateChat && isAdmin)) && <Pressable accessibilityRole="button" accessibilityLabel="Slett melding" disabled={!!deleting} onPress={() => confirmRemove(item)} style={styles.deleteAction}><Text style={styles.deleteText}>{deleting === item.id ? 'Sletter …' : 'Slett'}</Text></Pressable>}
       </View>)}
@@ -127,6 +158,7 @@ const styles = StyleSheet.create({
   help: { color: '#6b746a', lineHeight: 21, marginTop: 6 },
   label: { fontWeight: '700', color: '#283126', marginTop: 16, marginBottom: 7 },
   input: { borderWidth: 1, borderColor: '#ded9cf', borderRadius: 12, padding: 12, backgroundColor: '#fafbf8', minHeight: 100, fontSize: 16, textAlignVertical: 'top' },
+  imagePreview: { marginTop: 12, gap: 8 }, preview: { width: '100%', height: 180, borderRadius: 10, backgroundColor: '#eef1ec' },
   composerActions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginTop: 10 },
   heading: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   button: { backgroundColor: '#5f7652', paddingHorizontal: 14, paddingVertical: 12, borderRadius: 10, minHeight: 44, alignItems: 'center', justifyContent: 'center' },

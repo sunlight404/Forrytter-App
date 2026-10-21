@@ -1,11 +1,11 @@
 export const CHAT_TABLE = 'community_messages';
 export const MAX_MESSAGE_LENGTH = 2000;
 export const CHAT_PAGE_SIZE = 50;
-const fields = 'id,stable_id,sender_id,body,created_at,board_message_id,sender:profiles!community_messages_sender_id_fkey(full_name)';
+const fields = 'id,stable_id,sender_id,body,image_path,created_at,board_message_id,sender:profiles!community_messages_sender_id_fkey(full_name)';
 
-export function messageBody(text) {
+export function messageBody(text, imagePath = null) {
   const body = String(text || '').trim();
-  if (!body) throw new Error('Skriv en melding først.');
+  if (!body && !imagePath) throw new Error('Skriv en melding eller legg til et bilde først.');
   if ([...body].length > MAX_MESSAGE_LENGTH) throw new Error('Meldingen kan ha maksimalt 2000 tegn.');
   return body;
 }
@@ -28,12 +28,12 @@ export async function loadCommunityMessages(client, stableId, limit = CHAT_PAGE_
 }
 
 export async function sendCommunityMessage(client, draft) {
-  const message = { id: draft.id, stable_id: draft.stable_id, sender_id: draft.sender_id, body: messageBody(draft.body) };
+  const message = { id: draft.id, stable_id: draft.stable_id, sender_id: draft.sender_id, body: messageBody(draft.body, draft.image_path), ...(draft.image_path ? { image_path: draft.image_path } : {}) };
   const { data, error } = await client.from(CHAT_TABLE).insert(message).select(fields).single();
   if (!error) return data;
   if (error.code === '23505') {
     const result = await client.from(CHAT_TABLE).select(fields).eq('stable_id', message.stable_id).eq('id', message.id).single();
-    if (!result.error && result.data?.sender_id === message.sender_id && result.data?.body === message.body) return result.data;
+    if (!result.error && result.data?.sender_id === message.sender_id && result.data?.body === message.body && (result.data?.image_path || null) === (message.image_path || null)) return result.data;
   }
   throw error;
 }

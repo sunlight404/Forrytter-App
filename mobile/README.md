@@ -1,4 +1,14 @@
-# Fôrrytter App 1.10.0
+# Fôrrytter App 1.11.0
+
+## Nytt i 1.11.0 – Bilder i chatten
+
+- «Legg til bilde» i gruppechat og private samtaler, med forhåndsvisning og mulighet til å fjerne/bytte før sending.
+- Ett bilde per melding, med eller uten tekst. Bildet normaliseres til JPEG, maks 1600 piksler på lengste side og 5 MB.
+- Trykk på mottatt bilde for større visning. Utkast beholdes ved sendefeil; samme melding/bilde-ID brukes ved nytt forsøk.
+- Privat Storage-bøtte `chat-images`; tilgang følger meldingens RLS, også for administratorer. Bare deltakere kan hente private bilder.
+- Bilder som ikke er knyttet til en synlig melding, kan ikke lastes eller få signert URL. Eksisterende signerte lenker utløper etter 10 minutter. Fysiske objekter beholdes ved sletting av meldingen; opprydding må gå via Storage API, ikke direkte SQL.
+- Weboppdatering publiseres til eksisterende Expo-adresse. Native installasjoner trenger ny appbygging for de nye bildemodulene.
+- Verifisert med klienttester, databaseprøver med rollback og produksjonsbygg. Telefonens bildebibliotek må i tillegg kontrolleres på fysisk enhet.
 
 Mobilappen er en React Native/Expo-app med Supabase. App.js er appen som kjøres; index.html i prosjektroten er en eldre, separat demonstrasjon.
 

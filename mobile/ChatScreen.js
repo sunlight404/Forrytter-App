@@ -73,7 +73,7 @@ function PrivateChats({ supabase, stableId, userId, onDraftChange }) {
     {!filtered.length && !loading && !error && <Text style={styles.help}>{search ? 'Ingen navn passer søket.' : 'Ingen andre stallmedlemmer å skrive til ennå.'}</Text>}
     {filtered.map(contact => <Pressable key={contact.id} accessibilityRole="button" accessibilityLabel={`Åpne privat samtale med ${contact.name}`} onPress={() => { draft.current = ''; onDraftChange?.(''); setSelectedId(contact.id); }} style={styles.contact}>
       <Text style={styles.name}>{contact.name}{!contact.active ? ' · Tidligere medlem' : ''}</Text>
-      {contact.latest ? <><Text numberOfLines={2} style={styles.preview}>{contact.latest.sender_id === userId ? 'Du: ' : ''}{contact.latest.body}</Text><Text style={styles.date}>{new Date(contact.latest.created_at).toLocaleString('nb-NO',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</Text></> : <Text style={styles.help}>Start en privat samtale ›</Text>}
+      {contact.latest ? <><Text numberOfLines={2} style={styles.preview}>{contact.latest.sender_id === userId ? 'Du: ' : ''}{contact.latest.image_path ? '📷 Bilde · ' : ''}{contact.latest.body}</Text><Text style={styles.date}>{new Date(contact.latest.created_at).toLocaleString('nb-NO',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</Text></> : <Text style={styles.help}>Start en privat samtale ›</Text>}
     </Pressable>)}
   </View>;
 }
