@@ -2,12 +2,12 @@
   "expo": {
     "name": "Fôrrytter App",
     "slug": "forrytter-app",
-    "version": "1.11.0",
+    "version": "1.12.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "android": {
       "package": "no.stallnordstjerna.forrytter",
-      "versionCode": 32,
+      "versionCode": 33,
       "adaptiveIcon": {
         "foregroundImage": "./icon.jpg",
         "backgroundColor": "#000000"
@@ -15,14 +15,19 @@
     },
     "ios": {
       "bundleIdentifier": "no.stallnordstjerna.forrytter",
-      "buildNumber": "32",
+      "buildNumber": "33",
       "supportsTablet": false
     },
-    "plugins": [["expo-image-picker", {
-      "photosPermission": "Velg et bilde du vil dele i chatten.",
-      "cameraPermission": false,
-      "microphonePermission": false
-    }]],
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Velg et bilde du vil dele i chatten.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ]
+    ],
     "icon": "./icon.jpg",
     "extra": {
       "eas": {

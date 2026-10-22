@@ -5,7 +5,7 @@ import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { Alert } from './dialogs';
 import { CHAT_TABLE, CHAT_PAGE_SIZE, MAX_MESSAGE_LENGTH, deleteCommunityMessage, loadCommunityMessages, messageBody, messageId, sendCommunityMessage } from './communityMessages';
 import { DIRECT_TABLE, deleteDirectMessage, loadDirectMessages, sendDirectMessage } from './directMessages';
-import { HeartsProvider, MessageHeart } from './MessageHearts';
+import { HeartsProvider, MessageHeart } from './MessageHeartControls';
 import ChatImage from './ChatImage';
 import { MAX_IMAGE_BYTES, uploadChatImage } from './chatImages';
 

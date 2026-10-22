@@ -1,3 +1,4 @@
+import WaitingList from './WaitingList';
 import {groupAgreements,groupLabel} from './agreementGroups';
 import 'react-native-url-polyfill/auto';
 import React, { useEffect, useRef, useState } from 'react';
@@ -8,11 +9,11 @@ import PasswordRecovery from './PasswordRecovery';
 import { authOptions } from './authOptions';
 import HorseSwaps from './HorseSwaps';
 import ChatScreen from './ChatScreen';
-import { HeartsProvider, MessageHeart } from './MessageHearts';
+import { HeartsProvider, MessageHeart } from './MessageHeartControls';
 import appConfig from './app.json';
 import { holidayLabel, isRedDay, redDaysInMonth } from './holidays';
 import { feedingDay } from './feedingDay';
-import FeedingDay from './FeedingDay';
+import FeedingDay from './FeedingDayView';
 import HolidayFeedingForm from './HolidayFeedingForm';
 import Notifications, { disableDeviceNotifications } from './Notifications';
 const memberOptions=members=>members.map(m=>({value:m.user_id,label:(m.profiles?.full_name||'Uten navn')+(m.active===false?' (fjernet)':'')})).sort((a,b)=>a.label.localeCompare(b.label,'nb'));
@@ -504,7 +505,7 @@ function AdminScreen({ currentUserId, role }) {
     if(expected.length)Alert.alert('Erstatt fôringer denne dagen',formatDateLong(date)+': Eksisterende registreringer erstattes med felles dagsansvar for '+nameOf(first)+(second?' og '+nameOf(second):'')+'.',[{text:'Avbryt',style:'cancel'},{text:'Lagre dagsansvar',onPress:save}]);else save();
   }
 
-  const sections=[['profiles','Brukerprofiler','Finn en bruker, godkjenn tilgang og endre rolle.'],['agreements','Faste avtaler','Rediger faste helger, hest og trening.'],['training','Hest og trening','Endre hest eller trening på én bestemt dato.'],['tasks','Oppgaver','Legg til og fjern oppgaver for en hestedag.'],['feeding','Fôringer','Fordel fôringer. På røde dager: to morgen, én lunsj og to kveld.'],['horses','Hester','Legg til eller fjern hester fra listen.'],['messages','Beskjeder','Publiser en beskjed til alle.']];
+  const sections=[['waitlist','Venteliste','Navn, informasjon og ønsket kurs – eldste først.'],['profiles','Brukerprofiler','Finn en bruker, godkjenn tilgang og endre rolle.'],['agreements','Faste avtaler','Rediger faste helger, hest og trening.'],['training','Hest og trening','Endre hest eller trening på én bestemt dato.'],['tasks','Oppgaver','Legg til og fjern oppgaver for en hestedag.'],['feeding','Fôringer','Fordel fôringer. På røde dager: to morgen, én lunsj og to kveld.'],['horses','Hester','Legg til eller fjern hester fra listen.'],['messages','Beskjeder','Publiser en beskjed til alle.']];
   const currentSection=sections.find(x=>x[0]===adminPanel);
   const feedCalendarMonth=parseIsoDate(feedMonth);
   const missingRedDays=redDaysInMonth(feedCalendarMonth.getFullYear(),feedCalendarMonth.getMonth()+1).filter(day=>day.date>=localDate()&&feedingDay(day.date,adminFeeds).meals.some(meal=>meal.missing));
@@ -513,6 +514,7 @@ function AdminScreen({ currentUserId, role }) {
     <Section title="Admin"><Text style={styles.help}>Velg hva du vil administrere.</Text>{adminPanel!=='overview'&&<Btn title="Tilbake til adminoversikt" secondary onPress={()=>setAdminPanel('overview')}/>}<View style={styles.choiceWrap}>{sections.map(([key,title])=><Choice key={key} label={title} selected={adminPanel===key} onPress={()=>setAdminPanel(key)}/>)}</View>{currentSection&&<><Text style={styles.bold}>{currentSection[1]}</Text><Text style={styles.help}>{currentSection[2]}</Text></>}</Section>
     {adminPanel==='overview'&&<Section title="Adminoversikt"><Text style={styles.help}>{members.length} aktive brukere · {horses.length} hester</Text>{requests.length>0&&<Btn title={requests.length+' nye brukere venter på godkjenning'} onPress={()=>setAdminPanel('profiles')}/>} {unassigned.length>0&&<Btn title={unassigned.length+' fôringer mangler rytter'} onPress={()=>setAdminPanel('feeding')}/>} {sections.map(([key,title,description])=><Pressable key={key} accessibilityRole="button" accessibilityLabel={'Åpne '+title} style={styles.item} onPress={()=>setAdminPanel(key)}><Text style={styles.bold}>{title} →</Text><Text style={styles.help}>{description}</Text></Pressable>)}</Section>}
 
+    {adminPanel==='waitlist'&&<WaitingList supabase={supabase} stableId={STABLE_ID}/>}
     <View style={{display:adminPanel==='profiles'?'flex':'none'}}><Section title="Nye brukere">{requests.length?requests.map(r=><View key={r.id} style={styles.item}><Text style={styles.bold}>Ny konto · {r.user_id.slice(0,8)}</Text><Text style={styles.muted}>Venter på tilgang</Text><View style={styles.row}><Btn title="Godkjenn" onPress={()=>approveUser(r)}/><Btn title="Avslå" danger onPress={()=>declineUser(r)}/></View></View>):<Empty text="Ingen nye brukere venter."/>}</Section></View>
 
     <View style={{display:adminPanel==='profiles'?'flex':'none'}}><Section title="Brukerprofiler"><Field label="Søk etter navn" value={profileSearch} onChangeText={setProfileSearch} placeholder="Skriv hele eller deler av navnet"/><View style={styles.choiceWrap}>{[['active','Aktive'],['removed','Fjernede'],['all','Alle']].map(([key,label])=><Choice key={key} label={label} selected={profileFilter===key} onPress={()=>setProfileFilter(key)}/>)}</View><Dropdown label="Velg profil å redigere" value={managedUser} onChange={setManagedUser} options={memberOptions(allMembers.filter(m=>(profileFilter==='all'||(profileFilter==='active'?m.active:!m.active))&&(m.profiles?.full_name||'').toLocaleLowerCase('nb').includes(profileSearch.trim().toLocaleLowerCase('nb'))))}/>{!managedUser&&<Empty text="Velg en bruker for å se navn, rolle og tilgang."/>}{allMembers.filter(m=>m.user_id===managedUser).map(m=><View key={m.user_id} style={styles.item}><Text style={styles.bold}>Du redigerer: {m.profiles?.full_name||'Bruker'}</Text><Field label="Navn på profilen" value={profileName} onChangeText={setProfileName} maxLength={120}/><Btn title={memberBusy?'Lagrer …':'Lagre navn'} disabled={memberBusy||!profileName.trim()||profileName.trim()===(m.profiles?.full_name||'')} onPress={saveProfileName}/><Text style={styles.muted}>{m.role==='owner'?'Eier':m.role==='admin'?'Admin':'Fôrrytter'}{!m.active?' · Fjernet fra stallen':''}</Text>{role==='owner'&&m.active&&m.user_id!==currentUserId&&m.role!=='owner'&&<View style={styles.row}><Btn title="Fôrrytter" secondary={m.role!=='rider'} onPress={()=>setRoleFor(m,'rider')}/><Btn title="Admin" secondary={m.role!=='admin'} onPress={()=>setRoleFor(m,'admin')}/></View>}{m.user_id!==currentUserId&&m.role!=='owner'&&(role==='owner'||m.role==='rider')&&<Btn title={m.active?'Fjern bruker fra stallen':'Gi tilgang igjen'} danger={m.active} disabled={memberBusy} onPress={()=>confirmMemberAccess(m)}/>}</View>)}<Text style={styles.help}>Fjerning stenger stalltilgangen. Kontoen og historikken beholdes. Eier kan ikke fjernes her.</Text></Section></View>
