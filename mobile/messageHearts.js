@@ -1,4 +1,15 @@
+import { messageId } from './communityMessages.js';
+
 export const HEART_TABLE = 'message_reactions';
+export function subscribeMessageHearts(client, kind, userId, targets, onChange) {
+  // Each mounted provider and effect run owns its channel. The group and an
+  // open comment thread coexist; the SDK reuses matching topics and rejects
+  // adding listeners to a channel that has already subscribed.
+  return client.channel(`forrytter-hearts-${kind}-${userId}-${messageId()}`)
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: HEART_TABLE }, payload => {
+      if (targets.some(target => payload.new[target.column] === target.id)) onChange();
+    }).subscribe();
+}
 const columns = { community: 'community_message_id', direct: 'direct_message_id', board: 'board_message_id' };
 const fields = 'id,community_message_id,direct_message_id,board_message_id,user_id,created_at,reactor:profiles!message_reactions_user_id_fkey(full_name)';
 function uuid(value) {

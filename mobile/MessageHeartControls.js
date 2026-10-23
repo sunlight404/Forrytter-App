@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { AppState, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { HEART_TABLE, heartSummary, heartTargets, loadMessageHearts, setMessageHeart } from './messageHearts';
+import { heartSummary, heartTargets, loadMessageHearts, setMessageHeart, subscribeMessageHearts } from './messageHearts';
 
 const HeartsContext = createContext(null);
 
@@ -19,10 +19,7 @@ export function HeartsProvider({ supabase, userId, kind, messages, children }) {
   }
   useEffect(() => {
     scope.current++; alive.current = true; setReady(false); setRows({}); setError(''); load();
-    const channel = supabase.channel(`forrytter-hearts-${kind}-${userId}`)
-      .on('postgres_changes', {event:'INSERT',schema:'public',table:HEART_TABLE}, payload => {
-        if (targets.some(target => payload.new[target.column] === target.id)) load();
-      }).subscribe();
+    const channel = subscribeMessageHearts(supabase, kind, userId, targets, load);
     // DELETE events are not subscribed to: polling safely updates removed hearts.
     const timer = setInterval(load, 15000);
     const state = AppState.addEventListener('change', value => { if (value === 'active') load(); });

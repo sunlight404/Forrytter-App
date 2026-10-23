@@ -1,4 +1,8 @@
-# Fôrrytter App 1.13.0
+# Fôrrytter App 1.13.1
+
+## Rettet i 1.13.1 – Blank side ved åpning av kommentarer
+
+Hjertevisningen i gruppechatten og en åpen kommentartråd fikk samme Realtime-kanalnavn. Supabase gjenbrukte den aktive kanalen og kastet en feil når tråden registrerte sine lyttere. Hver hjertevisning får nå en egen kanal for hvert abonnement, også ved oppdatering eller gjenåpning. En regresjonstest bruker den faktiske Supabase-klienten uten nettverk for å kontrollere samtidige visninger og gjenåpning.
 
 ## Nytt i 1.13.0 – Kommentarer under gruppechatmeldinger
 
