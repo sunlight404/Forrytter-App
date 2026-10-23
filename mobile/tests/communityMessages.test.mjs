@@ -24,11 +24,13 @@ test('sending uses only community_messages and never sends a TV field or admin m
 });
 test('the conversation stays scoped to its stable and loads one extra row for pagination',async()=>{
   const db=client(async(url)=>{
-    const u=new URL(url);assert.equal(u.pathname,'/rest/v1/community_messages');assert.equal(u.searchParams.get('stable_id'),'eq.'+stable);
+    const u=new URL(url);
+    if(u.pathname==='/rest/v1/community_reply_counts') { assert.equal(u.searchParams.get('stable_id'),'eq.'+stable); return response([]); }
+    assert.equal(u.pathname,'/rest/v1/community_messages');assert.equal(u.searchParams.get('stable_id'),'eq.'+stable);assert.equal(u.searchParams.get('parent_id'),'is.null');
     assert.equal(u.searchParams.get('order'),'created_at.desc,id.desc');assert.equal(u.searchParams.get('limit'),'3');
     return response([{id:'new'},{id:'middle'},{id:'older'}]);
   });
-  const page=await loadCommunityMessages(db,stable,2);assert.deepEqual(page.items,[{id:'new'},{id:'middle'}]);assert.equal(page.hasMore,true);
+  const page=await loadCommunityMessages(db,stable,2);assert.deepEqual(page.items,[{id:'new',reply_count:0},{id:'middle',reply_count:0}]);assert.equal(page.hasMore,true);
 });
 test('retry after a lost insert response confirms the existing message without a duplicate',async()=>{
   const draft={id:messageId(),stable_id:stable,sender_id:sender,body:'Test'};let calls=0;
@@ -81,3 +83,4 @@ test('an existing phone-only account can log in by SMS and send to the group cha
   assert.equal(saved.sender_id,sender);assert.deepEqual(requests,['/auth/v1/otp','/auth/v1/verify','/rest/v1/community_messages']);
   db.auth.stopAutoRefresh();
 });
+

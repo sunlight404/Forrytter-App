@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AppState, Image, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AppState, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { Alert } from './dialogs';
-import { CHAT_TABLE, CHAT_PAGE_SIZE, MAX_MESSAGE_LENGTH, deleteCommunityMessage, loadCommunityMessages, messageBody, messageId, sendCommunityMessage } from './communityMessages';
+import { CHAT_TABLE, CHAT_PAGE_SIZE, MAX_MESSAGE_LENGTH, deleteCommunityMessage, loadCommunityMessages, loadCommunityReplies, messageBody, messageId, sendCommunityMessage } from './communityMessages';
 import { DIRECT_TABLE, deleteDirectMessage, loadDirectMessages, sendDirectMessage } from './directMessages';
 import { HeartsProvider, MessageHeart } from './MessageHeartControls';
 import ChatImage from './ChatImage';
@@ -16,9 +16,12 @@ function Button({ title, onPress, disabled, secondary, danger }) {
   </Pressable>;
 }
 
-export default function CommunityChat({ supabase, stableId, userId, isAdmin, recipient = null, onDraftChange }) {
+export default function CommunityChat({ supabase, stableId, userId, isAdmin, recipient = null, thread = null, onDraftChange, onBusyChange }) {
   const privateChat = !!recipient;
-  const canSend = !privateChat || recipient.active;
+  const [threadMissing, setThreadMissing] = useState(false), [threadParent, setThreadParent] = useState(thread);
+  const [activeThread, setActiveThread] = useState(null), [threadBusy, setThreadBusy] = useState(false);
+  const threadDraft = useRef('');
+  const canSend = (!privateChat || recipient.active) && !threadMissing;
   const [items, setItems] = useState([]), [text, setText] = useState('');
   const [image, setImage] = useState(null), [picking, setPicking] = useState(false);
   const [loading, setLoading] = useState(true), [sending, setSending] = useState(false);
@@ -29,6 +32,15 @@ export default function CommunityChat({ supabase, stableId, userId, isAdmin, rec
   const pickLock = useRef(false);
 
   useEffect(() => { onDraftChange?.(text || (image || picking ? '[Bilde]' : '')); }, [text, image, picking]);
+  useEffect(() => { onBusyChange?.(sending || picking); }, [sending, picking]);
+
+  function closeThread() {
+    if (threadBusy) return;
+    const close = () => { threadDraft.current = ''; setActiveThread(null); load(true); };
+    if (threadDraft.current.trim()) Alert.alert('Forkaste kommentar?', 'Kommentaren er ikke sendt. Vil du lukke uten å sende?', [
+      { text: 'Bli her', style: 'cancel' }, { text: 'Forkast utkast', style: 'destructive', onPress: close },
+    ]); else close();
+  }
 
   async function pickImage() {
     if (pickLock.current || sendLock.current || !canSend) return;
@@ -55,11 +67,16 @@ export default function CommunityChat({ supabase, stableId, userId, isAdmin, rec
     try {
       const result = privateChat
         ? await loadDirectMessages(supabase, stableId, userId, recipient.id, limit.current)
+        : thread ? await loadCommunityReplies(supabase, stableId, thread.id, limit.current)
         : await loadCommunityMessages(supabase, stableId, limit.current);
       if (!alive.current || id !== request.current) return;
+      if (thread) { setThreadParent(result.parent); setThreadMissing(false); }
       setItems(result.items); setHasMore(result.hasMore); setError('');
-    } catch {
-      if (alive.current && id === request.current) setError('Kunne ikke hente meldingene. Prøv igjen når du har nett.');
+    } catch (e) {
+      if (alive.current && id === request.current) {
+        if (e.code === 'THREAD_DELETED') { setThreadMissing(true); setItems([]); setHasMore(false); }
+        setError(e.code === 'THREAD_DELETED' ? e.message : 'Kunne ikke hente meldingene. Prøv igjen når du har nett.');
+      }
     } finally {
       if (alive.current && id === request.current) setLoading(false);
     }
@@ -67,7 +84,7 @@ export default function CommunityChat({ supabase, stableId, userId, isAdmin, rec
 
   useEffect(() => {
     alive.current = true; limit.current = CHAT_PAGE_SIZE; load();
-    const channel = supabase.channel(`forrytter-chat-${stableId}-${userId}-${recipient?.id || 'group'}`)
+    const channel = supabase.channel(`forrytter-chat-${stableId}-${userId}-${recipient?.id || thread?.id || 'group'}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: privateChat ? DIRECT_TABLE : CHAT_TABLE, filter: `stable_id=eq.${stableId}` }, () => load(true))
       .subscribe(status => { if (status === 'SUBSCRIBED') load(true); });
     // Polling also catches deleted messages and restores updates after lost connections.
@@ -80,21 +97,21 @@ export default function CommunityChat({ supabase, stableId, userId, isAdmin, rec
       if (Platform.OS === 'web') window.removeEventListener('focus', focus);
       supabase.removeChannel(channel);
     };
-  }, [supabase, stableId, userId, recipient?.id]);
+  }, [supabase, stableId, userId, recipient?.id, thread?.id]);
 
   async function send() {
     if (sendLock.current || pickLock.current || !canSend) return;
     let body;
     try { body = messageBody(text, image ? 'pending' : null); } catch (e) { setSendError(e.message); return; }
     sendLock.current = true; setSending(true); setSendError('');
-    if (!pendingDraft.current || pendingDraft.current.body !== body || pendingDraft.current.image !== image) pendingDraft.current = { id: messageId(), stable_id: stableId, sender_id: userId, ...(privateChat ? { recipient_id: recipient.id } : {}), body, image };
+    if (!pendingDraft.current || pendingDraft.current.body !== body || pendingDraft.current.image !== image) pendingDraft.current = { id: messageId(), stable_id: stableId, sender_id: userId, ...(privateChat ? { recipient_id: recipient.id } : {}), ...(thread ? { parent_id: thread.id } : {}), body, image };
     try {
       if (image && !pendingDraft.current.image_path) pendingDraft.current.image_path = await uploadChatImage(supabase, pendingDraft.current, image);
       await (privateChat ? sendDirectMessage : sendCommunityMessage)(supabase, pendingDraft.current);
       if (!alive.current) return;
       setText(''); setImage(null); onDraftChange?.(''); pendingDraft.current = null; await load(true);
     } catch {
-      if (alive.current) setSendError('Meldingen kunne ikke bekreftes sendt. Tekst og bilde er beholdt. Trykk Send for å prøve igjen.');
+      if (alive.current) { setSendError('Meldingen kunne ikke bekreftes sendt. Tekst og bilde er beholdt. Trykk Send for å prøve igjen.'); if (thread) load(true); }
     } finally {
       sendLock.current = false; if (alive.current) setSending(false);
     }
@@ -111,30 +128,36 @@ export default function CommunityChat({ supabase, stableId, userId, isAdmin, rec
   }
 
   function confirmRemove(item) {
-    Alert.alert('Slett melding', privateChat ? 'Vil du slette denne meldingen for begge i samtalen?' : 'Vil du slette denne meldingen fra gruppechatten?', [
+    Alert.alert('Slett melding', privateChat ? 'Vil du slette denne meldingen for begge i samtalen?' : thread ? 'Vil du slette denne kommentaren?' : 'Vil du slette meldingen fra gruppechatten? Eventuelle kommentarer under meldingen slettes også.', [
       { text: 'Avbryt', style: 'cancel' }, { text: 'Slett', style: 'destructive', onPress: () => remove(item.id) },
     ]);
   }
 
   return <View>
+    {thread && !threadMissing && <View style={styles.card}>
+      <Text style={styles.title}>Svar på meldingen</Text>
+      <Text style={styles.author}>{threadParent?.sender?.full_name || 'Tidligere medlem'}</Text>
+      {!!threadParent?.body && <Text selectable style={styles.body}>{threadParent.body}</Text>}
+      {!!threadParent?.image_path && <ChatImage supabase={supabase} path={threadParent.image_path} />}
+    </View>}
     <View style={styles.card}>
-      <Text style={styles.title}>{privateChat ? recipient.name : 'Gruppechat'}</Text>
-      <Text style={styles.help}>{privateChat ? 'Privat samtale. Bare dere to kan lese meldingene. De kommer ikke i gruppechatten eller på tavla.' : 'En felles samtale for godkjente stallmedlemmer. Du bruker den samme innloggingen som ellers i appen. Meldinger her kommer ikke på tavla.'}</Text>
-      {!canSend && <Text style={styles.help}>Denne personen er ikke lenger et aktivt stallmedlem. Du kan lese historikken.</Text>}
-      <Text style={styles.label}>{privateChat ? 'Ny privat melding' : 'Ny melding til alle'}</Text>
-      <TextInput accessibilityLabel={privateChat ? `Privat melding til ${recipient.name}` : 'Melding til fellespraten'} placeholder={privateChat ? 'Skriv en privat melding …' : 'Skriv til de andre fôrrytterne …'}
+      <Text style={styles.title}>{privateChat ? recipient.name : thread ? 'Skriv en kommentar' : 'Gruppechat'}</Text>
+      <Text style={styles.help}>{privateChat ? 'Privat samtale. Bare dere to kan lese meldingene. De kommer ikke i gruppechatten eller på tavla.' : thread ? 'Kommentaren samles under denne meldingen og er synlig for stallmedlemmene.' : 'En felles samtale for godkjente stallmedlemmer. Trykk Svar på en melding for å kommentere den.'}</Text>
+      {!canSend && <Text style={styles.help}>{threadMissing ? 'Meldingen er slettet eller ikke tilgjengelig. Utkastet ditt er beholdt.' : 'Denne personen er ikke lenger et aktivt stallmedlem. Du kan lese historikken.'}</Text>}
+      <Text style={styles.label}>{privateChat ? 'Ny privat melding' : thread ? 'Ny kommentar' : 'Ny melding til alle'}</Text>
+      <TextInput accessibilityLabel={privateChat ? `Privat melding til ${recipient.name}` : thread ? 'Kommentar til meldingen' : 'Melding til fellespraten'} placeholder={privateChat ? 'Skriv en privat melding …' : thread ? 'Skriv en kommentar …' : 'Skriv til de andre fôrrytterne …'}
         multiline maxLength={MAX_MESSAGE_LENGTH} editable={!sending && canSend} value={text}
         onChangeText={value => { setText(value); setSendError(''); }} style={styles.input} />
       {image && <View style={styles.imagePreview}><Image accessibilityLabel="Valgt bilde, ikke sendt ennå" source={{ uri: image.uri }} resizeMode="contain" style={styles.preview} /><Button title="Fjern bilde" secondary disabled={sending || picking} onPress={() => setImage(null)} /></View>}
       <View style={styles.composerActions}><Button title={picking ? 'Klargjør bilde …' : image ? 'Velg et annet bilde' : 'Legg til bilde'} secondary disabled={sending || picking || !canSend} onPress={pickImage} /></View>
       <View style={styles.composerActions}><Text style={styles.help}>{text.length}/{MAX_MESSAGE_LENGTH}</Text>
-        <Button title={sending ? 'Sender …' : 'Send melding'} disabled={sending || picking || !canSend || (!text.trim() && !image)} onPress={send} /></View>
+        <Button title={sending ? 'Sender …' : thread ? 'Send kommentar' : 'Send melding'} disabled={sending || picking || !canSend || (!text.trim() && !image)} onPress={send} /></View>
       {!!sendError && <Text accessibilityRole="alert" style={styles.error}>{sendError}</Text>}
     </View>
     <View style={styles.card}>
-      <View style={styles.heading}><Text style={styles.title}>Siste meldinger</Text><Button title={loading ? 'Henter …' : 'Oppdater'} secondary disabled={loading} onPress={() => load()} /></View>
+      <View style={styles.heading}><Text style={styles.title}>{thread ? 'Kommentarer' : 'Siste meldinger'}</Text><Button title={loading ? 'Henter …' : 'Oppdater'} secondary disabled={loading} onPress={() => load()} /></View>
       {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
-      {!items.length && !loading && !error && <Text style={styles.help}>Ingen meldinger ennå. Start gjerne samtalen!</Text>}
+      {!items.length && !loading && !error && <Text style={styles.help}>{thread ? 'Ingen kommentarer ennå. Skriv gjerne det første svaret!' : 'Ingen meldinger ennå. Start gjerne samtalen!'}</Text>}
       {loading && !items.length && <Text style={styles.help}>Henter samtalen …</Text>}
       <HeartsProvider supabase={supabase} userId={userId} kind={privateChat ? 'direct' : 'community'} messages={items}>
       {items.map(item => <View key={item.id} style={[styles.message, item.sender_id === userId && styles.ownMessage]}>
@@ -144,16 +167,27 @@ export default function CommunityChat({ supabase, stableId, userId, isAdmin, rec
         {!!item.body && <Text selectable style={styles.body}>{item.body}</Text>}
         {!!item.image_path && <ChatImage supabase={supabase} path={item.image_path} />}
         <MessageHeart messageId={item.id}/>
+        {!privateChat && !thread && <Button title={item.reply_count ? `Svar · ${item.reply_count} ${item.reply_count === 1 ? 'kommentar' : 'kommentarer'}` : 'Svar / kommenter'} secondary onPress={() => { threadDraft.current = ''; setActiveThread(item); }} />}
         {(item.sender_id === userId || (!privateChat && isAdmin)) && <Pressable accessibilityRole="button" accessibilityLabel="Slett melding" disabled={!!deleting} onPress={() => confirmRemove(item)} style={styles.deleteAction}><Text style={styles.deleteText}>{deleting === item.id ? 'Sletter …' : 'Slett'}</Text></Pressable>}
       </View>)}
       </HeartsProvider>
-      {hasMore && <Button title="Vis eldre meldinger" secondary disabled={loading} onPress={() => { limit.current += CHAT_PAGE_SIZE; load(); }} />}
+      {hasMore && <Button title={thread ? 'Vis eldre kommentarer' : 'Vis eldre meldinger'} secondary disabled={loading} onPress={() => { limit.current += CHAT_PAGE_SIZE; load(); }} />}
     </View>
+    {!privateChat && !thread && <Modal visible={!!activeThread} onRequestClose={closeThread} animationType="slide">
+      <KeyboardAvoidingView style={styles.threadScreen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <View style={styles.threadHeader}><Button title="‹ Tilbake til gruppechat" secondary disabled={threadBusy} onPress={closeThread} /></View>
+        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.threadContent}>
+          {activeThread && <CommunityChat key={activeThread.id} supabase={supabase} stableId={stableId} userId={userId} isAdmin={isAdmin} thread={activeThread} onDraftChange={value => { threadDraft.current = value; }} onBusyChange={setThreadBusy} />}
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </Modal>}
   </View>;
 }
 
 const styles = StyleSheet.create({
   card: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#ded9cf', borderRadius: 15, padding: 14, marginBottom: 10 },
+  threadScreen: { flex: 1, backgroundColor: '#f7f3eb', paddingTop: Platform.OS === 'ios' ? 54 : 24 },
+  threadHeader: { paddingHorizontal: 12, paddingBottom: 12 }, threadContent: { padding: 12, paddingBottom: 40 },
   title: { fontSize: 19, fontWeight: '800', color: '#283126' },
   help: { color: '#6b746a', lineHeight: 21, marginTop: 6 },
   label: { fontWeight: '700', color: '#283126', marginTop: 16, marginBottom: 7 },

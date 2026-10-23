@@ -1,4 +1,10 @@
-# Fôrrytter App 1.11.0
+# Fôrrytter App 1.13.0
+
+## Nytt i 1.13.0 – Kommentarer under gruppechatmeldinger
+
+«Svar / kommenter» på hver gruppechatmelding åpner en egen tråd med originalmeldingen. Antall kommentarer vises på meldingen. Kommentarer kan inneholde tekst, bilde og hjerter og vises i tidsrekkefølge; «Vis eldre kommentarer» henter eldre historikk. Utkast beholdes ved sendefeil, og lukking krever bekreftelse hvis kommentaren ikke er sendt.
+
+Kommentarer lagres i `community_messages` med `parent_id`, med samme medlemskontroll, bilder og varsler som gruppechatten. En kommentar kan bare knyttes til en hovedmelding i samme stall. Sletting av hovedmeldingen sletter tilhørende kommentarer; dialogen forklarer dette. Antallsvisningen bruker en `security_invoker`-view med underliggende RLS. Private samtaler beholder eksisterende oppførsel. Ventelisten fra 1.12.1 beholdes.
 
 ## Nytt i 1.11.0 – Bilder i chatten
 
