@@ -1,4 +1,10 @@
-# Fôrrytter App 1.13.1
+# Fôrrytter App 1.14.0
+
+## Nytt i 1.14.0 – Hester på røde dager og i romjulen
+
+Admin → Hester på røde dager og romjul lar admin velge dato, rytter, hest og beskjed om stell/trening. Kalenderen støtter ukedager og viser snarvalg for månedens røde dager, inkludert stallens fridager 24.–31. desember. Datooversikten viser alle lagrede tildelinger på valgt dag. Én hest per rytter per dato; lagring erstatter eventuell eksisterende tildeling etter bekreftelse. Vanlige faste avtaler gjelder ellers som før.
+
+Rytteren får «Mine hester på røde dager og i romjulen» under Min oversikt, med hest, dato, beskjed og oppgaver. Eksisterende horse_assignments og medlemskontroll brukes. Standardoppgavene opprettes av eksisterende trigger også på ukedager. Verifisert med en isolert databasetest av 28. desember og fem oppgaver, med rollback.
 
 ## Rettet i 1.13.1 – Blank side ved åpning av kommentarer
 
