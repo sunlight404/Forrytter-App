@@ -1,4 +1,10 @@
-# Fôrrytter App 1.14.0
+# Fôrrytter App 1.14.1
+
+## Rettet i 1.14.1 – Flere hester per rytter på samme dato
+
+Databasen identifiserer nå en tildeling med stall, dato, rytter og hest. «Legg til en hest til» beholder andre hester og oppgaver. «Rediger» velger én konkret tildeling; fjerning gjelder bare valgt hest. Oppgaver under hestekort filtreres på hesten, og alle hester på første kommende dag/helg vises. Faste avtaler overskriver ikke eksisterende enkeltdatoer, og byttefunksjonens avlysningsmarkører bruker den nye nøkkelen. Gamle appversjoner må oppdateres før lagring. Tildelinger som allerede var overskrevet av den gamle én-hest-regelen, blir ikke automatisk gjenopprettet.
+
+Verifisert med to hester og ti oppgaver, bevart avkrysning/beskjed, fast avtale uten overskriving, separat avlysning og ryttertilgang i en databasetransaksjon med rollback.
 
 ## Nytt i 1.14.0 – Hester på røde dager og i romjulen
 

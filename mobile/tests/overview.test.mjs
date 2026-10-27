@@ -45,6 +45,12 @@ test('only an approved swap matching the current horse and date is labelled a sw
 });
 
 const horseDay = (date, horse, rest = {}) => ({id:date,assignment_date:date,horse_id:horse,is_cancelled:false,...rest});
+test('all horses on the same holiday and both weekend dates remain visible',()=>{
+  const holiday=[horseDay('2026-12-28','A'),horseDay('2026-12-28','B'),horseDay('2026-12-29','C')];
+  assert.deepEqual(nextHorseDays(holiday,'2026-12-27'),holiday.slice(0,2));
+  const weekend=[horseDay('2026-12-26','A'),horseDay('2026-12-26','B'),horseDay('2026-12-27','C')];
+  assert.deepEqual(nextHorseDays(weekend,'2026-12-25'),weekend);
+});
 test('both horses in the next weekend appear with their own dates and training across a month boundary', () => {
   const saturday=horseDay('2026-10-31','horse-a',{training_text:'Tur'});
   const sunday=horseDay('2026-11-01','horse-b',{training_text:'Bane'});

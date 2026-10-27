@@ -255,7 +255,7 @@ function WaitingScreen({ identifier, onRefresh, onLogout }) {
   return <SafeAreaView style={styles.safe}><View style={styles.centerBox}><Text style={styles.logo}>🐴</Text><Text style={styles.bigTitle}>Venter på godkjenning</Text><Text style={styles.centerMuted}>{identifier}</Text><Text style={styles.helpCenter}>Kontoen er opprettet, men har ikke tilgang til Stall Nordstjerna ennå. Eier eller admin må godkjenne den.</Text><Btn title="Sjekk på nytt" onPress={onRefresh} /><Btn title="Logg ut" secondary onPress={onLogout} /></View></SafeAreaView>;
 }
 
-function HorseDayTasks({userId,selectedDate,showHorse=false}) {
+function HorseDayTasks({userId,selectedDate,showHorse=false,horseId=null}) {
   const [tasks,setTasks]=useState([]),[dayAssignment,setDayAssignment]=useState(null);
   const [saving,setSaving]=useState(null),[error,setError]=useState(''),[loading,setLoading]=useState(true);
   const taskRequest=useRef(0),savingRef=useRef(false);
@@ -266,20 +266,22 @@ function HorseDayTasks({userId,selectedDate,showHorse=false}) {
     const listener=AppState.addEventListener('change',state=>{if(state==='active')refresh();});
     if(Platform.OS==='web')window.addEventListener('focus',refresh);
     return()=>{clearInterval(timer);listener.remove();if(Platform.OS==='web')window.removeEventListener('focus',refresh);taskRequest.current++;};
-  },[selectedDate,userId]);
+  },[selectedDate,userId,horseId]);
   async function loadTasks(background = false) {
     if(savingRef.current)return;
     const id = ++taskRequest.current;
     setError(''); if(!background)setLoading(true);
     if (!background) { setTasks([]); setDayAssignment(null); }
     try {
+      let taskQuery=supabase.from('tasks').select('*,horses(name)').eq('stable_id',STABLE_ID).eq('task_date',selectedDate).eq('assigned_to',userId);
+      if(horseId)taskQuery=taskQuery.eq('horse_id',horseId);
       const [result,day] = await Promise.all([
-        supabase.from('tasks').select('*,horses(name)').eq('stable_id',STABLE_ID).eq('task_date',selectedDate).eq('assigned_to',userId).order('standard_task_key',{nullsFirst:false}).order('created_at'),
-        supabase.from('horse_assignments').select('*,horses(name)').eq('stable_id',STABLE_ID).eq('user_id',userId).eq('assignment_date',selectedDate).eq('is_cancelled',false).maybeSingle()
+        taskQuery.order('standard_task_key',{nullsFirst:false}).order('created_at'),
+        supabase.from('horse_assignments').select('*,horses(name)').eq('stable_id',STABLE_ID).eq('user_id',userId).eq('assignment_date',selectedDate).eq('is_cancelled',false)
       ]);
       if(day.error) throw day.error;
       if (result.error) throw result.error;
-      if (id === taskRequest.current) {setTasks(result.data || []);setDayAssignment(day.data);}
+      if (id === taskRequest.current) {setTasks(result.data || []);setDayAssignment(day.data?.length?{horses:{name:day.data.map(a=>a.horses?.name||'Hest').join(' · ')},training_text:day.data.map(a=>a.training_text).filter(Boolean).join('\n')}:null);}
     } catch (e) { if (id === taskRequest.current) setError('Kunne ikke oppdatere oppgavene. Prøv igjen.'); } finally { if(id===taskRequest.current)setLoading(false); }
   }
   async function toggle(task){
@@ -328,7 +330,7 @@ function TodayScreen({ userId }) {
         supabase.from('messages').select('*').eq('stable_id',STABLE_ID).eq('active',true).gte('created_at',messageCutoff()).order('created_at',{ascending:false}),
         supabase.from('feeding_shifts').select('*').eq('stable_id',STABLE_ID).eq('shift_date',d).eq('assigned_to',userId).order('shift_time'),
         supabase.from('horse_assignments').select('*,horses(name)').eq('stable_id',STABLE_ID).eq('assignment_date',d).eq('user_id',userId).eq('is_cancelled',false),
-        supabase.from('horse_assignments').select('*,horses(name)').eq('stable_id',STABLE_ID).gt('assignment_date',d).eq('user_id',userId).eq('is_cancelled',false).order('assignment_date').limit(2),
+        supabase.from('horse_assignments').select('*,horses(name)').eq('stable_id',STABLE_ID).gt('assignment_date',d).eq('user_id',userId).eq('is_cancelled',false).order('assignment_date').limit(1000),
         supabase.from('feeding_shifts').select('*').eq('stable_id',STABLE_ID).eq('assigned_to',userId).or(upcomingShiftFilter(d,timeKey())).order('shift_date').order('shift_time').limit(1).maybeSingle(),
         supabase.from('recurring_horse_assignments').select('*,horses(name)').eq('stable_id',STABLE_ID).eq('user_id',userId).eq('active',true).order('week_parity').order('weekday')
       ]);
@@ -352,8 +354,8 @@ function TodayScreen({ userId }) {
 
   return <>
     <Section title="Min oversikt"><Text style={styles.muted}>{formatDateLong(today)} · {weekLabel(today)} · Versjon {appConfig.expo.version}</Text>{isRedDay(today)&&<Text style={styles.redDayLabel}>{holidayLabel(today)} · Morgen-, lunsj- og kveldsfôring. Se ansvarlige i Fôring.</Text>}{error?<Text accessibilityRole="alert">{error}</Text>:null}<Btn title={busy?'Oppdaterer …':'Oppdater'} disabled={busy} secondary onPress={()=>{load();setTaskRevision(v=>v+1);}}/></Section>
-    {assignments.length>0&&<Section title="Min hest i dag">{assignments.map(a=><View key={a.id}><View style={styles.horseCard}><Text style={styles.horseName}>🐴 {a.horses?.name || 'Hest'}</Text><Text>{formatDateLong(today)}</Text><TrainingText text={a.training_text}/></View><HorseDayTasks key={a.id+today+taskRevision} userId={userId} selectedDate={today}/></View>)}</Section>}
-    <Section title="Neste gang jeg har hest">{nextAssignments.length?nextAssignments.map(assignment=><View key={assignment.id} style={{marginBottom:16}}><View style={styles.horseCard}><Text style={styles.horseName}>🐴 {assignment.horses?.name || 'Hest'}</Text><Text>{formatDateLong(assignment.assignment_date)} · {weekLabel(assignment.assignment_date)}</Text><Text style={styles.muted}>{assignment.origin}</Text>{!assignment.recurring_id&&assignment.origin!=='Godkjent hestebytte'&&<Text style={styles.help}>Treningen er lagret spesielt for denne datoen og overstyrer fast avtale.</Text>}<TrainingText text={assignment.training_text}/></View><HorseDayTasks key={assignment.id+assignment.assignment_date+taskRevision} userId={userId} selectedDate={assignment.assignment_date}/></View>):<Empty text="Ingen kommende hestetildeling registrert."/>}</Section>
+    {assignments.length>0&&<Section title="Min hest i dag">{assignments.map(a=><View key={a.id}><View style={styles.horseCard}><Text style={styles.horseName}>🐴 {a.horses?.name || 'Hest'}</Text><Text>{formatDateLong(today)}</Text><TrainingText text={a.training_text}/></View><HorseDayTasks key={a.id+today+taskRevision} userId={userId} selectedDate={today} horseId={a.horse_id}/></View>)}</Section>}
+    <Section title="Neste gang jeg har hest">{nextAssignments.length?nextAssignments.map(assignment=><View key={assignment.id} style={{marginBottom:16}}><View style={styles.horseCard}><Text style={styles.horseName}>🐴 {assignment.horses?.name || 'Hest'}</Text><Text>{formatDateLong(assignment.assignment_date)} · {weekLabel(assignment.assignment_date)}</Text><Text style={styles.muted}>{assignment.origin}</Text>{!assignment.recurring_id&&assignment.origin!=='Godkjent hestebytte'&&<Text style={styles.help}>Treningen er lagret spesielt for denne datoen og overstyrer fast avtale.</Text>}<TrainingText text={assignment.training_text}/></View><HorseDayTasks key={assignment.id+assignment.assignment_date+taskRevision} userId={userId} selectedDate={assignment.assignment_date} horseId={assignment.horse_id}/></View>):<Empty text="Ingen kommende hestetildeling registrert."/>}</Section>
     {(shifts.length>0||nextShift)&&<Section title="Mine fôringer">{shifts.map(shift=><View key={shift.id} style={styles.item}><Text style={styles.bold}>I dag · {feedingLabel(shift)}</Text><Text style={styles.muted}>{formatDate(shift.shift_date)}</Text></View>)}{nextShift&&!shifts.some(shift=>shift.id===nextShift.id)&&<View style={styles.item}><Text style={styles.bold}>{feedingLabel(nextShift)}</Text><Text>{formatDateLong(nextShift.shift_date)}</Text></View>}</Section>}
     <HolidayHorseDays userId={userId} revision={taskRevision}/>
     <Btn title={showDetails?'Skjul flere valg':'Flere valg'} secondary onPress={()=>setShowDetails(v=>!v)}/>
@@ -398,7 +400,7 @@ function HolidayHorseDays({userId=null,date=null,revision=0,onChoose}) {
   const request=useRef(0);
   useEffect(()=>{load();const timer=setInterval(load,30000);const focus=()=>load();const listener=AppState.addEventListener('change',state=>{if(state==='active')load();});if(Platform.OS==='web')window.addEventListener('focus',focus);return()=>{request.current++;clearInterval(timer);listener.remove();if(Platform.OS==='web')window.removeEventListener('focus',focus);};},[userId,date,revision]);
   async function load(){const id=++request.current;setLoading(true);try{let query=supabase.from('horse_assignments').select('*,horses(name),profiles!horse_assignments_user_id_fkey(full_name)').eq('stable_id',STABLE_ID).eq('is_cancelled',false).order('assignment_date');if(date)query=query.eq('assignment_date',date);else query=query.eq('user_id',userId).gte('assignment_date',localDate()).lte('assignment_date',(Number(localDate().slice(0,4))+1)+'-12-31');let all=[],offset=0;while(true){const result=await query.range(offset,offset+499);if(result.error)throw result.error;all=all.concat(result.data||[]);if(!result.data||result.data.length<500)break;offset+=500;}if(id===request.current){setRows(date?all:all.filter(row=>isRedDay(row.assignment_date)));setError('');}}catch{if(id===request.current)setError('Kunne ikke hente hestefordelingen.');}finally{if(id===request.current)setLoading(false);}}
-  return <Section title={date?'Hestefordeling på valgt dato':'Mine hester på røde dager og i romjulen'}>{error?<><Text accessibilityRole="alert">{error}</Text><Btn title="Prøv igjen" onPress={load}/></>:null}{loading&&!rows.length?<Text>Henter …</Text>:!rows.length&&!error?<Empty text={date?'Ingen hester er fordelt på denne datoen.':'Ingen hestedager på røde dager eller i romjulen er registrert ennå.'}/>:null}{rows.map(row=><View key={row.id} style={styles.item}><Text style={styles.bold}>{row.horses?.name||'Hest'}{date?' · '+(row.profiles?.full_name||'Rytter'):''}</Text><Text>{formatDateLong(row.assignment_date)} · {holidayLabel(row.assignment_date)}</Text><TrainingText text={row.training_text}/>{date?<Btn title="Rediger fordeling for rytteren" secondary onPress={()=>onChoose?.(row.user_id)}/>:<><Btn title={expanded===row.id?'Skjul oppgaver':'Se oppgaver og stell'} secondary onPress={()=>setExpanded(expanded===row.id?null:row.id)}/>{expanded===row.id&&<HorseDayTasks userId={userId} selectedDate={row.assignment_date}/>}</>}</View>)}</Section>;
+  return <Section title={date?'Hestefordeling på valgt dato':'Mine hester på røde dager og i romjulen'}>{error?<><Text accessibilityRole="alert">{error}</Text><Btn title="Prøv igjen" onPress={load}/></>:null}{loading&&!rows.length?<Text>Henter …</Text>:!rows.length&&!error?<Empty text={date?'Ingen hester er fordelt på denne datoen.':'Ingen hestedager på røde dager eller i romjulen er registrert ennå.'}/>:null}{rows.map(row=><View key={row.id} style={styles.item}><Text style={styles.bold}>{row.horses?.name||'Hest'}{date?' · '+(row.profiles?.full_name||'Rytter'):''}</Text><Text>{formatDateLong(row.assignment_date)} · {holidayLabel(row.assignment_date)}</Text><TrainingText text={row.training_text}/>{date?<Btn title="Rediger fordeling for rytteren" secondary onPress={()=>onChoose?.(row)}/>:<><Btn title={expanded===row.id?'Skjul oppgaver':'Se oppgaver og stell'} secondary onPress={()=>setExpanded(expanded===row.id?null:row.id)}/>{expanded===row.id&&<HorseDayTasks userId={userId} selectedDate={row.assignment_date} horseId={row.horse_id}/>}</>}</View>)}</Section>;
 }
 
 function AdminScreen({ currentUserId, role }) {
@@ -421,6 +423,7 @@ function AdminScreen({ currentUserId, role }) {
   const [message,setMessage]=useState('');
   const [feedSecond,setFeedSecond]=useState(null);
   const [selectedUser,setSelectedUser]=useState(null);
+  const [editingAssignment,setEditingAssignment]=useState(null);
   const [selectedHorse,setSelectedHorse]=useState(null);
   const [taskTitle,setTaskTitle]=useState('');
   const [adminTaskRevision,setAdminTaskRevision]=useState(0);
@@ -443,14 +446,19 @@ function AdminScreen({ currentUserId, role }) {
     setTrainingText(''); setAssignmentError(''); setAssignmentLoadFailed(false);
     if(!selectedUser){setAssignmentLoading(false);return;}
     setAssignmentLoading(true);
-    supabase.from('horse_assignments').select('horse_id,training_text,is_cancelled,recurring_id').eq('stable_id',STABLE_ID).eq('user_id',selectedUser).eq('assignment_date',taskDate).maybeSingle().then(({data,error})=>{
+    if(adminPanel==='holidayHorses'&&!editingAssignment){setSelectedHorse(null);setAssignmentLoading(false);return;}
+    let query=supabase.from('horse_assignments').select('id,horse_id,training_text,is_cancelled,recurring_id').eq('stable_id',STABLE_ID).eq('user_id',selectedUser).eq('assignment_date',taskDate);
+    if(editingAssignment)query=query.eq('id',editingAssignment);
+    query.then(({data:rows,error})=>{
+      const data=rows?.length===1?rows[0]:null;
       if(!live)return;
       if(error){setAssignmentLoadFailed(true);setAssignmentError('Kunne ikke hente dagens avtale. Velg datoen på nytt.');}
-      else if(data){setSelectedHorse(data.horse_id);setTrainingText(data.training_text||'');if(!data.recurring_id&&!data.is_cancelled)setAssignmentError('Denne datoen har en egen treningsplan som overstyrer den faste avtalen.');if(data.is_cancelled)setAssignmentError('Denne dagen er avlyst. Lagre for å gjenopprette den.');}
+      else if(rows?.length>1){setAssignmentLoadFailed(true);setAssignmentError('Flere hester denne dagen. Velg den konkrete fordelingen under Hester på røde dager og romjul.');}
+      else if(data){if(adminPanel!=='holidayHorses'&&!editingAssignment)setEditingAssignment(data.id);setSelectedHorse(data.horse_id);setTrainingText(data.training_text||'');if(!data.recurring_id&&!data.is_cancelled)setAssignmentError('Denne datoen har en egen treningsplan som overstyrer den faste avtalen.');if(data.is_cancelled)setAssignmentError('Denne dagen er avlyst. Lagre for å gjenopprette den.');}
       setAssignmentLoading(false);
     }).catch(()=>{if(live){setAssignmentLoadFailed(true);setAssignmentError('Kunne ikke hente dagens avtale.');setAssignmentLoading(false);}});
     return()=>{live=false;};
-  },[selectedUser,taskDate]);
+  },[selectedUser,taskDate,adminPanel,editingAssignment]);
 
   useEffect(()=>{load();},[]);
   async function load(){
@@ -491,19 +499,20 @@ function AdminScreen({ currentUserId, role }) {
     if(assignmentLoading||assignmentLoadFailed)return;
     if(!selectedUser||!selectedHorse)return Alert.alert('Velg fôrrytter og hest');
     if(adminPanel==='holidayHorses'&&!isRedDay(taskDate))return Alert.alert('Velg en rød dag eller en dag i romjulen');
-    if(adminPanel==='holidayHorses')return Alert.alert('Lagre hest på fridag',nameOf(selectedUser)+' · '+formatDateLong(taskDate)+'. Dette erstatter eventuell hestefordeling for rytteren denne dagen og oppretter oppgavene for hesten.',[{text:'Avbryt',style:'cancel'},{text:'Lagre fordeling',onPress:()=>persistHorseAssignment()}]);
+    if(adminPanel==='holidayHorses')return Alert.alert('Lagre hest på fridag',nameOf(selectedUser)+' · '+formatDateLong(taskDate)+'. Bare valgt hest lagres. Andre hester og oppgaver denne dagen beholdes.',[{text:'Avbryt',style:'cancel'},{text:'Lagre fordeling',onPress:()=>persistHorseAssignment()}]);
     return persistHorseAssignment();
   }
   async function persistHorseAssignment(){
     if(assignmentLoading||assignmentLoadFailed)return;
     if(!selectedUser||!selectedHorse)return Alert.alert('Velg fôrrytter og hest');
     if(adminPanel==='holidayHorses'?!isRedDay(taskDate):!isWeekend(taskDate))return Alert.alert(adminPanel==='holidayHorses'?'Velg en rød dag eller en dag i romjulen':'Velg lørdag eller søndag');
-    const {error}=await supabase.from('horse_assignments').upsert({stable_id:STABLE_ID,assignment_date:taskDate,user_id:selectedUser,horse_id:selectedHorse,created_by:currentUserId,training_text:trainingText.trim(),recurring_id:null,is_cancelled:false},{onConflict:'stable_id,assignment_date,user_id'});
+    const values={stable_id:STABLE_ID,assignment_date:taskDate,user_id:selectedUser,horse_id:selectedHorse,created_by:currentUserId,training_text:trainingText.trim(),recurring_id:null,is_cancelled:false};
+    const {error}=editingAssignment?await supabase.from('horse_assignments').update(values).eq('stable_id',STABLE_ID).eq('id',editingAssignment).eq('user_id',selectedUser).eq('assignment_date',taskDate).select('id').single():await supabase.from('horse_assignments').upsert(values,{onConflict:'stable_id,assignment_date,user_id,horse_id'});
     if(error)Alert.alert('Feil',error.message);else {setAdminTaskRevision(v=>v+1);Alert.alert('Lagret',`Hest og trening er lagret ${formatDate(taskDate)}.`);}
   }
   async function removeHorseAssignment(){
-    if(!selectedUser)return Alert.alert('Velg fôrrytter først');
-    const {error}=await supabase.from('horse_assignments').update({is_cancelled:true,recurring_id:null}).eq('stable_id',STABLE_ID).eq('assignment_date',taskDate).eq('user_id',selectedUser);
+    if(!selectedUser||!selectedHorse)return Alert.alert('Velg fôrrytter og hest først');
+    const {error}=await supabase.from('horse_assignments').update({is_cancelled:true,recurring_id:null}).eq('stable_id',STABLE_ID).eq('assignment_date',taskDate).eq('user_id',selectedUser).eq('horse_id',selectedHorse);
     if(error)Alert.alert('Feil',error.message);else {setAdminTaskRevision(v=>v+1);Alert.alert('Fjernet',`Hestefordelingen ${formatDate(taskDate)} er fjernet.`);}
   }
   async function addTask(){
@@ -538,11 +547,11 @@ function AdminScreen({ currentUserId, role }) {
 
     <View style={{display:adminPanel==='agreements'?'flex':'none'}}><RecurringAgreementsAdmin key={memberVersion} members={members} horses={horses} currentUserId={currentUserId}/></View>
     <View style={{display:['training','holidayHorses'].includes(adminPanel)?'flex':'none'}}><Section title={adminPanel==='holidayHorses'?'Hester på røde dager og romjul':'Hest og trening på en dato'}>
-      <Dropdown label="1. Velg fôrrytter" value={selectedUser} onChange={setSelectedUser} options={memberOptions(members)}/>
+      <Dropdown label="1. Velg fôrrytter" value={selectedUser} onChange={value=>{setEditingAssignment(null);setSelectedUser(value);}} options={memberOptions(members)}/>
       <Dropdown label="2. Velg hest" value={selectedHorse} onChange={setSelectedHorse} options={horseOptions(horses)}/>
       {!horses.length&&<Text style={styles.help}>Legg til hester i seksjonen «Hester» under først.</Text>}
-      <Text style={styles.label}>{adminPanel==='holidayHorses'?'3. Velg dato':'3. Velg lørdag eller søndag'}</Text><CalendarPicker value={taskDate} onChange={setTaskDate} weekendOnly={adminPanel!=='holidayHorses'}/>
-      {adminPanel==='holidayHorses'&&<><Text style={styles.help}>Velg dato, rytter og hest. Lagre én rytter om gangen. En eksisterende fordeling for rytteren på denne datoen erstattes. Standardoppgavene opprettes automatisk.</Text><Text style={styles.bold}>{holidayLabel(taskDate)||'Velg en rød dag eller en dag i romjulen'}</Text><View style={styles.choiceWrap}>{redDaysInMonth(Number(taskDate.slice(0,4)),Number(taskDate.slice(5,7))).map(day=><Choice key={day.date} label={formatDate(day.date)+' · '+day.label} selected={taskDate===day.date} onPress={()=>setTaskDate(day.date)}/>)}</View><HolidayHorseDays date={taskDate} revision={adminTaskRevision} onChoose={setSelectedUser}/></>}
+      <Text style={styles.label}>{adminPanel==='holidayHorses'?'3. Velg dato':'3. Velg lørdag eller søndag'}</Text><CalendarPicker value={taskDate} onChange={value=>{setEditingAssignment(null);setTaskDate(value);}} weekendOnly={adminPanel!=='holidayHorses'}/>
+      {adminPanel==='holidayHorses'&&<><Text style={styles.help}>Velg dato, rytter og hest. Legg til én hest om gangen. Andre hester samme dag beholdes. For å endre en registrering, trykk Rediger ved den aktuelle hesten.</Text><Btn title="Legg til en hest til" secondary onPress={()=>{setEditingAssignment(null);setSelectedHorse(null);setTrainingText('');}}/><Text style={styles.bold}>{holidayLabel(taskDate)||'Velg en rød dag eller en dag i romjulen'}</Text><View style={styles.choiceWrap}>{redDaysInMonth(Number(taskDate.slice(0,4)),Number(taskDate.slice(5,7))).map(day=><Choice key={day.date} label={formatDate(day.date)+' · '+day.label} selected={taskDate===day.date} onPress={()=>{setEditingAssignment(null);setTaskDate(day.date);}}/>)}</View><HolidayHorseDays date={taskDate} revision={adminTaskRevision} onChoose={row=>{setSelectedUser(row.user_id);setEditingAssignment(row.id);}}/></>}
       {selectedUser&&<View style={styles.notice}><Text style={styles.bold}>Du redigerer: {nameOf(selectedUser)}</Text><Text>{formatDateLong(taskDate)}{selectedHorse?' · '+(horses.find(h=>h.id===selectedHorse)?.name||''):''}</Text><Text>Endringen gjelder bare denne datoen.</Text></View>}<Field label="Trening denne dagen" value={trainingText} onChangeText={setTrainingText} multiline maxLength={4000} placeholder="Beskriv hva slags trening hesten skal ha"/><Text style={styles.help}>En lagring her gjelder bare valgt dato og overstyrer eventuell fast avtale.</Text>{!!assignmentError&&<Text style={styles.help}>{assignmentError}</Text>}<View style={styles.row}><Btn title="Lagre hest og trening" disabled={assignmentLoading||assignmentLoadFailed} onPress={saveHorseAssignment}/><Btn title="Fjern hestefordeling" danger onPress={removeHorseAssignment}/></View>
 
     </Section></View>

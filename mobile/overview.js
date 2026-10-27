@@ -30,10 +30,9 @@ export function nextHorseDays(assignments = [], afterDate) {
   const first = upcoming[0];
   if (!first) return [];
   const date = new Date(`${first.assignment_date}T12:00:00`);
-  if (date.getDay() !== 6) return [first];
+  if (date.getDay() !== 6) return upcoming.filter(row => row.assignment_date === first.assignment_date);
   date.setDate(date.getDate()+1);
-  const sunday = upcoming.find(row => row.assignment_date === dateKey(date));
-  return sunday ? [first,sunday] : [first];
+  return upcoming.filter(row => row.assignment_date === first.assignment_date || row.assignment_date === dateKey(date));
 }
 
 // Concrete calendar rows remain authoritative: never reconstruct dates from a rule,
