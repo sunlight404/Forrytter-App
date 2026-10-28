@@ -1,4 +1,8 @@
-# Fôrrytter App 1.14.1
+# Fôrrytter App 1.14.2
+
+## Endret i 1.14.2 – Venteliste fjernet
+
+Ventelisten er fjernet fra adminmenyen og appkoden. Eksisterende databaseoppføringer beholdes, og migrasjonen for ventelistetabellen ligger fortsatt i historikken.
 
 ## Rettet i 1.14.1 – Flere hester per rytter på samme dato
 

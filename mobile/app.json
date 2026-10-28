@@ -2,12 +2,12 @@
   "expo": {
     "name": "Fôrrytter App",
     "slug": "forrytter-app",
-    "version": "1.14.1",
+    "version": "1.14.2",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "android": {
       "package": "no.stallnordstjerna.forrytter",
-      "versionCode": 38,
+      "versionCode": 39,
       "adaptiveIcon": {
         "foregroundImage": "./icon.jpg",
         "backgroundColor": "#000000"
@@ -15,7 +15,7 @@
     },
     "ios": {
       "bundleIdentifier": "no.stallnordstjerna.forrytter",
-      "buildNumber": "38",
+      "buildNumber": "39",
       "supportsTablet": false
     },
     "plugins": [
